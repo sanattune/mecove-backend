@@ -1,0 +1,73 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+
+  identities Identity[]
+  messages   Message[]
+  summaries  Summary[]
+}
+
+model Identity {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  channel        String
+  channelUserKey String
+  createdAt      DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id])
+  messages Message[]
+
+  @@unique([channel, channelUserKey])
+}
+
+model Message {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  identityId      String    @db.Uuid
+  createdAt       DateTime  @default(now())
+  clientTimestamp DateTime?
+  contentType     String
+  text            String?   @db.Text
+  rawPayload      Json?
+  sourceMessageId String
+
+  user     User     @relation(fields: [userId], references: [id])
+  identity Identity @relation(fields: [identityId], references: [id])
+
+  @@unique([identityId, sourceMessageId])
+  @@index([userId, createdAt])
+  @@index([identityId, createdAt])
+}
+
+model Summary {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @db.Uuid
+  rangeStart         DateTime
+  rangeEnd           DateTime
+  createdAt          DateTime @default(now())
+  status             String
+  summaryText        String?  @db.Text
+  modelName          String?
+  promptVersion      String?
+  inputMessagesCount Int      @default(0)
+  inputHash          String?
+  error              String?  @db.Text
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, rangeStart, rangeEnd])
+}
