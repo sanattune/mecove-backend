@@ -1,0 +1,19 @@
+﻿{
+  "name": "mecove-backend",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:api": "tsx watch src/api/server.ts",
+    "dev:worker": "tsx watch src/worker/worker.ts",
+    "build": "tsc -p tsconfig.json",
+    "start:api": "node dist/api/server.js",
+    "start:worker": "node dist/worker/worker.js"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
