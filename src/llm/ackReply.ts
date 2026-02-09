@@ -27,10 +27,19 @@ export async function generateAckReply(
     where: { userId },
     orderBy: { createdAt: "desc" },
     take: 10,
-    select: { text: true, createdAt: true },
+    select: { text: true, createdAt: true, replyText: true, repliedAt: true },
   });
   const oldestFirst = messages.reverse();
-  const lines = oldestFirst.map((m) => `User: ${m.text ?? "(no text)"}`.trim());
+  
+  // Format messages as alternating User/Bot pairs
+  const lines: string[] = [];
+  for (const m of oldestFirst) {
+    lines.push(`User: ${m.text ?? "(no text)"}`.trim());
+    if (m.replyText && m.repliedAt) {
+      lines.push(`Bot: ${m.replyText}`.trim());
+    }
+  }
+  
   const block = lines.join("\n");
   const prompt = ACK_PROMPT.replace("{{MESSAGES}}", block);
   const reply = await llm.complete({
