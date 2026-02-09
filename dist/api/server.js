@@ -8,6 +8,8 @@ const node_http_1 = __importDefault(require("node:http"));
 const prisma_1 = require("../infra/prisma");
 const logger_1 = require("../infra/logger");
 const summaryQueue_1 = require("../queues/summaryQueue");
+const replyQueue_1 = require("../queues/replyQueue");
+const messageTracking_1 = require("../infra/messageTracking");
 function getInboundTextMessageSender(body) {
     const msg = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg || msg.type !== "text" || !msg.text?.body)
@@ -56,39 +58,6 @@ function readBody(req) {
         req.on("error", reject);
     });
 }
-let whatsappReplyEnvWarned = false;
-function sendWhatsAppReplyAsync(toDigits) {
-    const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
-    const token = process.env.WHATSAPP_PERMANENT_TOKEN?.trim();
-    if (!phoneId || !token) {
-        if (!whatsappReplyEnvWarned) {
-            whatsappReplyEnvWarned = true;
-            logger_1.logger.warn("WhatsApp reply skipped: WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_PERMANENT_TOKEN missing");
-        }
-        return;
-    }
-    const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
-    fetch(url, {
-        method: "POST",
-        headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            messaging_product: "whatsapp",
-            to: toDigits,
-            type: "text",
-            text: { body: "Noted." },
-        }),
-    })
-        .then(async (r) => {
-        if (!r.ok)
-            logger_1.logger.warn("WhatsApp reply non-OK", r.status, await r.text());
-        else
-            logger_1.logger.info("WhatsApp reply sent to", toDigits);
-    })
-        .catch((err) => logger_1.logger.error("WhatsApp reply error:", err));
-}
 const server = node_http_1.default.createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/health") {
         res.statusCode = 200;
@@ -107,11 +76,10 @@ const server = node_http_1.default.createServer(async (req, res) => {
             expectedToken &&
             verifyToken === expectedToken &&
             challenge !== null) {
-            logger_1.logger.info("GET /webhooks/whatsapp verification OK");
             sendText(res, 200, challenge);
         }
         else {
-            logger_1.logger.warn("GET /webhooks/whatsapp verification failed", { mode, hasToken: !!expectedToken });
+            logger_1.logger.warn("webhook verification failed", { mode, hasToken: !!expectedToken });
             sendText(res, 403, "Forbidden");
         }
         return;
@@ -122,7 +90,7 @@ const server = node_http_1.default.createServer(async (req, res) => {
             const body = JSON.parse(raw);
             const from = getInboundTextMessageSender(body);
             if (from === null) {
-                logger_1.logger.info("POST /webhooks/whatsapp: no text message, ignored");
+                // Silent - no log needed for non-text messages
                 sendJSON(res, 200, { ok: true });
                 return;
             }
@@ -153,11 +121,12 @@ const server = node_http_1.default.createServer(async (req, res) => {
                     },
                     include: { user: true },
                 });
-                logger_1.logger.info("new user and identity created for phone", channelUserKey, { userId: identity.userId });
+                // Silent - no log needed for normal operation
             }
             const user = identity.user;
             const clientTimestamp = new Date(Number(timestamp) * 1000);
-            await prisma_1.prisma.message.upsert({
+            const serverTimestamp = Date.now(); // Use server arrival time for Redis tracking
+            const message = await prisma_1.prisma.message.upsert({
                 where: {
                     identityId_sourceMessageId: {
                         identityId: identity.id,
@@ -175,16 +144,24 @@ const server = node_http_1.default.createServer(async (req, res) => {
                     rawPayload: (messageNode ?? body),
                 },
             });
+            // Track message in Redis with server timestamp (for counting messages after)
+            await (0, messageTracking_1.addMessageTracking)(user.id, message.id, serverTimestamp);
+            // Enqueue summary generation
             await summaryQueue_1.summaryQueue.add(summaryQueue_1.JOB_NAME_GENERATE_SUMMARY, {
                 userId: user.id,
                 range: "last_7_days",
             });
-            logger_1.logger.info("webhook message stored and summary enqueued", {
-                from: channelUserKey,
-                messageId,
+            // Enqueue reply generation (async)
+            await replyQueue_1.replyQueue.add(replyQueue_1.JOB_NAME_GENERATE_REPLY, {
                 userId: user.id,
+                messageId: message.id,
+                identityId: identity.id,
+                sourceMessageId: messageId,
+                channelUserKey: from.replace(/^\+/, ""),
+                messageText: textBody,
+                messageTimestamp: serverTimestamp, // Use server timestamp for comparison
             });
-            sendWhatsAppReplyAsync(from.replace(/^\+/, ""));
+            // Silent - no log needed for normal operation
             sendJSON(res, 200, { ok: true });
         }
         catch (err) {

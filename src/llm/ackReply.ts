@@ -35,7 +35,7 @@ export async function generateAckReply(
   const prompt = ACK_PROMPT.replace("{{MESSAGES}}", block);
   const reply = await llm.complete({
     prompt,
-    maxTokens: 150,
+    maxTokens: 10000, // Sufficient for short conversational replies (1-2 sentences)
   });
   return reply.trim();
 }

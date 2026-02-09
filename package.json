@@ -11,7 +11,8 @@
     "start:api": "node dist/api/server.js",
     "start:worker": "node dist/worker/worker.js",
     "db:smoke": "tsx src/scripts/db_smoke.ts",
-    "sync:webhook": "tsx scripts/syncMetaWebhook.ts"
+    "sync:webhook": "tsx scripts/syncMetaWebhook.ts",
+    "check:reply-queue": "tsx src/scripts/check_reply_queue.ts"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

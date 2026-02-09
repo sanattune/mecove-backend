@@ -40,5 +40,5 @@ function loadLLMConfig(configPath) {
             maxTokens: model.max_tokens ?? 4096,
         };
     }
-    throw new Error("No LLM provider with api_key and at least one model found in config (e.g. config/llm.yaml)");
+    throw new Error("No LLM provider with api_key and at least one model found in llm.yaml");
 }

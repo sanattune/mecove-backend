@@ -7,7 +7,13 @@ import {
   JOB_NAME_GENERATE_SUMMARY,
   type GenerateSummaryPayload,
 } from "../queues/summaryQueue";
-import { generateAckReply } from "../llm/ackReply";
+import {
+  replyQueue,
+  JOB_NAME_GENERATE_REPLY,
+  type GenerateReplyPayload,
+} from "../queues/replyQueue";
+import { addMessageTracking } from "../infra/messageTracking";
+import { sendWhatsAppReply } from "../infra/whatsapp";
 
 type WhatsAppWebhookPayload = {
   entry?: Array<{
@@ -86,39 +92,6 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
-let whatsappReplyEnvWarned = false;
-function sendWhatsAppReplyAsync(toDigits: string, body: string = "Noted."): void {
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
-  const token = process.env.WHATSAPP_PERMANENT_TOKEN?.trim();
-  if (!phoneId || !token) {
-    if (!whatsappReplyEnvWarned) {
-      whatsappReplyEnvWarned = true;
-      logger.warn(
-        "WhatsApp reply skipped: WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_PERMANENT_TOKEN missing"
-      );
-    }
-    return;
-  }
-  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
-  fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: toDigits,
-      type: "text",
-      text: { body },
-    }),
-  })
-    .then(async (r) => {
-      if (!r.ok) logger.warn("WhatsApp reply non-OK", r.status, await r.text());
-      else logger.info("WhatsApp reply sent to", toDigits);
-    })
-    .catch((err) => logger.error("WhatsApp reply error:", err));
-}
 
 const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/health") {
@@ -142,12 +115,11 @@ const server = http.createServer(async (req, res) => {
       verifyToken === expectedToken &&
       challenge !== null
     ) {
-      logger.info("GET /webhooks/whatsapp verification OK");
-      sendText(res, 200, challenge);
-    } else {
-      logger.warn("GET /webhooks/whatsapp verification failed", { mode, hasToken: !!expectedToken });
-      sendText(res, 403, "Forbidden");
-    }
+        sendText(res, 200, challenge);
+      } else {
+        logger.warn("webhook verification failed", { mode, hasToken: !!expectedToken });
+        sendText(res, 403, "Forbidden");
+      }
     return;
   }
 
@@ -157,7 +129,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(raw) as WhatsAppWebhookPayload;
       const from = getInboundTextMessageSender(body);
       if (from === null) {
-        logger.info("POST /webhooks/whatsapp: no text message, ignored");
+        // Silent - no log needed for non-text messages
         sendJSON(res, 200, { ok: true });
         return;
       }
@@ -190,12 +162,14 @@ const server = http.createServer(async (req, res) => {
           },
           include: { user: true },
         });
-        logger.info("new user and identity created for phone", channelUserKey, { userId: identity.userId });
+        // Silent - no log needed for normal operation
       }
       const user = identity.user;
 
       const clientTimestamp = new Date(Number(timestamp) * 1000);
-      await prisma.message.upsert({
+      const serverTimestamp = Date.now(); // Use server arrival time for Redis tracking
+      
+      const message = await prisma.message.upsert({
         where: {
           identityId_sourceMessageId: {
             identityId: identity.id,
@@ -213,23 +187,29 @@ const server = http.createServer(async (req, res) => {
           rawPayload: (messageNode ?? body) as object,
         },
       });
+
+      // Track message in Redis with server timestamp (for counting messages after)
+      await addMessageTracking(user.id, message.id, serverTimestamp);
+
+      // Enqueue summary generation
       await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, {
         userId: user.id,
         range: "last_7_days",
       });
-      logger.info("webhook message stored and summary enqueued", {
-        from: channelUserKey,
-        messageId,
+
+      // Enqueue reply generation (async)
+      await replyQueue.add(JOB_NAME_GENERATE_REPLY, {
         userId: user.id,
+        messageId: message.id,
+        identityId: identity.id,
+        sourceMessageId: messageId,
+        channelUserKey: from.replace(/^\+/, ""),
+        messageText: textBody,
+        messageTimestamp: serverTimestamp, // Use server timestamp for comparison
       });
-      let replyText = "Noted.";
-      try {
-        const ack = await generateAckReply(user.id, textBody);
-        if (ack.trim().length > 0) replyText = ack.trim();
-      } catch (err) {
-        logger.warn("ack reply generation failed, using fallback", err);
-      }
-      sendWhatsAppReplyAsync(from.replace(/^\+/, ""), replyText);
+
+      // Silent - no log needed for normal operation
+
       sendJSON(res, 200, { ok: true });
     } catch (err) {
       logger.error("POST /webhooks/whatsapp error:", err);

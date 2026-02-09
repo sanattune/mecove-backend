@@ -44,6 +44,8 @@ model Message {
   text            String?   @db.Text
   rawPayload      Json?
   sourceMessageId String
+  repliedAt       DateTime?
+  replyText       String?   @db.Text
 
   user     User     @relation(fields: [userId], references: [id])
   identity Identity @relation(fields: [identityId], references: [id])
@@ -51,6 +53,7 @@ model Message {
   @@unique([identityId, sourceMessageId])
   @@index([userId, createdAt])
   @@index([identityId, createdAt])
+  @@index([userId, repliedAt])
 }
 
 model Summary {

@@ -40,9 +40,11 @@ class LlmViaApi {
             throw new Error(`Groq API error ${res.status}: ${text}`);
         }
         const data = (await res.json());
-        const content = data.choices?.[0]?.message?.content;
-        if (content === undefined) {
-            throw new Error("Groq API response missing choices[0].message.content");
+        const choice = data.choices?.[0];
+        const content = choice?.message?.content;
+        if (content == null || String(content).trim() === "") {
+            const reason = choice?.finish_reason ?? "unknown";
+            throw new Error(`Groq API returned empty content (finish_reason: ${reason}). Raw choice: ${JSON.stringify(choice)}`);
         }
         return content;
     }
