@@ -6,10 +6,13 @@ export const JOB_NAME_GENERATE_SUMMARY = "generateSummary";
 
 export type GenerateSummaryPayload = {
   userId: string;
-  range: "last_7_days";
+  channelUserKey: string;
+  range: "last_15_days";
 };
 
 export const summaryQueue = new Queue(SUMMARY_QUEUE_NAME, {
   connection: getRedis(),
-  defaultJobOptions: { removeOnComplete: { count: 1000 } },
+  defaultJobOptions: {
+    removeOnComplete: { count: 1000 },
+  },
 });

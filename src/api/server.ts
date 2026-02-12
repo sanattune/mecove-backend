@@ -237,7 +237,8 @@ const server = http.createServer(async (req, res) => {
       }
       const payload: GenerateSummaryPayload = {
         userId: identity.userId,
-        range: "last_7_days",
+        channelUserKey: identity.channelUserKey.replace(/^\+/, ""),
+        range: "last_15_days",
       };
       const job = await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, payload);
       logger.info("debug enqueue-summary", { jobId: job.id ?? String(job.id) });

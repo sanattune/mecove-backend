@@ -1,13 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendWhatsAppReply = sendWhatsAppReply;
+exports.sendWhatsAppDocument = sendWhatsAppDocument;
+exports.sendWhatsAppBufferDocument = sendWhatsAppBufferDocument;
 const logger_1 = require("./logger");
 let whatsappReplyEnvWarned = false;
-/**
- * Sends a WhatsApp reply message. If messageId is provided, sends as a contextual reply
- * (threaded reply to the original message).
- */
-async function sendWhatsAppReply(toDigits, body, messageId) {
+function getWhatsAppEnv() {
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
     const token = process.env.WHATSAPP_PERMANENT_TOKEN?.trim();
     if (!phoneId || !token) {
@@ -18,6 +16,14 @@ async function sendWhatsAppReply(toDigits, body, messageId) {
         }
         throw new Error(errorMsg);
     }
+    return { phoneId, token };
+}
+/**
+ * Sends a WhatsApp reply message. If messageId is provided, sends as a contextual reply
+ * (threaded reply to the original message).
+ */
+async function sendWhatsAppReply(toDigits, body, messageId) {
+    const { phoneId, token } = getWhatsAppEnv();
     const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
     const payload = {
         messaging_product: "whatsapp",
@@ -52,5 +58,67 @@ async function sendWhatsAppReply(toDigits, body, messageId) {
     catch (err) {
         logger_1.logger.error("WhatsApp reply error:", err);
         throw err;
+    }
+}
+async function sendWhatsAppDocument(toDigits, pdfBytes, filename, caption) {
+    return sendWhatsAppBufferDocument(toDigits, pdfBytes, filename, "application/pdf", caption);
+}
+async function sendWhatsAppBufferDocument(toDigits, fileBytes, filename, mimeType, caption) {
+    const { phoneId, token } = getWhatsAppEnv();
+    const mediaUrl = `https://graph.facebook.com/v19.0/${phoneId}/media`;
+    const messagesUrl = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mimeType);
+    const fileArray = new Uint8Array(fileBytes);
+    form.append("file", new Blob([fileArray], { type: mimeType }), filename);
+    const uploadRes = await fetch(mediaUrl, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: form,
+    });
+    if (!uploadRes.ok) {
+        const errorText = await uploadRes.text();
+        logger_1.logger.error("WhatsApp media upload error", {
+            status: uploadRes.status,
+            error: errorText,
+            filename,
+            mimeType,
+        });
+        throw new Error(`WhatsApp media upload error: ${uploadRes.status} ${errorText}`);
+    }
+    const uploadData = (await uploadRes.json());
+    const mediaId = uploadData.id;
+    if (!mediaId) {
+        throw new Error("WhatsApp media upload did not return media id");
+    }
+    const payload = {
+        messaging_product: "whatsapp",
+        to: toDigits,
+        type: "document",
+        document: { id: mediaId, filename },
+    };
+    if (caption && caption.trim().length > 0) {
+        payload.document.caption = caption.trim();
+    }
+    const sendRes = await fetch(messagesUrl, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+    });
+    if (!sendRes.ok) {
+        const errorText = await sendRes.text();
+        logger_1.logger.error("WhatsApp document send error", {
+            status: sendRes.status,
+            error: errorText,
+            filename,
+            mediaId,
+        });
+        throw new Error(`WhatsApp document send error: ${sendRes.status} ${errorText}`);
     }
 }

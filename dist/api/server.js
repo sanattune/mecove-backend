@@ -188,7 +188,8 @@ const server = node_http_1.default.createServer(async (req, res) => {
             }
             const payload = {
                 userId: identity.userId,
-                range: "last_7_days",
+                channelUserKey: identity.channelUserKey.replace(/^\+/, ""),
+                range: "last_15_days",
             };
             const job = await summaryQueue_1.summaryQueue.add(summaryQueue_1.JOB_NAME_GENERATE_SUMMARY, payload);
             logger_1.logger.info("debug enqueue-summary", { jobId: job.id ?? String(job.id) });

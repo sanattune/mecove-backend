@@ -7,5 +7,7 @@ exports.SUMMARY_QUEUE_NAME = "summary";
 exports.JOB_NAME_GENERATE_SUMMARY = "generateSummary";
 exports.summaryQueue = new bullmq_1.Queue(exports.SUMMARY_QUEUE_NAME, {
     connection: (0, redis_1.getRedis)(),
-    defaultJobOptions: { removeOnComplete: { count: 1000 } },
+    defaultJobOptions: {
+        removeOnComplete: { count: 1000 },
+    },
 });
