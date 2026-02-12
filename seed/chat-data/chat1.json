@@ -1,0 +1,333 @@
+[
+  {
+    "day": 1
+  },
+  {
+    "day": 2
+  },
+  {
+    "day": 3,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Did my morning meditation today, felt really calm afterwards",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "About 10 minutes, focusing on my breath",
+        "r": "Got it."
+      },
+      {
+        "index": 3,
+        "u": "I'm noticing I'm less reactive to stress lately",
+        "r": "Acknowledged. Say more if you'd like."
+      },
+      {
+        "index": 4,
+        "u": "Yes, feeling more centered overall",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 4,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Meditation streak continues, day 4 now",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "Felt more focused during work today",
+        "r": "Noted. Feel free to share more if you want."
+      },
+      {
+        "index": 3,
+        "u": "Less distracted, stayed present with tasks",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "Planning to increase to 15 minutes tomorrow",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 5,
+    "chat": [
+      {
+        "index": 1,
+        "u": "15 minute meditation done, felt really good",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "I'm proud of myself for sticking with this",
+        "r": "Noted."
+      },
+      {
+        "index": 3,
+        "u": "My sleep has been better too",
+        "r": "Got it. Say more if you'd like."
+      },
+      {
+        "index": 4,
+        "u": "Feeling optimistic about continuing",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 6,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Another day of meditation complete",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "Really good, it's becoming a natural part of my routine",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 3,
+        "u": "I notice I'm more patient with myself",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "Yes, exactly that",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 7,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Had a difficult conversation I need to have at work",
+        "r": "Acknowledged. Share more if you're willing."
+      },
+      {
+        "index": 2,
+        "u": "Need to discuss project delays with my manager",
+        "r": "Noted."
+      },
+      {
+        "index": 3,
+        "u": "Anxious, been putting it off",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "Worried about how they'll react, feeling guilty about the delays",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 8,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Still haven't had that conversation, feeling more stressed",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "I know I need to do it but keep postponing",
+        "r": "Acknowledged. Say more if you'd like."
+      },
+      {
+        "index": 3,
+        "u": "Maybe, but I'm not ready yet",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "I'll try to do it this week",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 9,
+    "chat": [
+      {
+        "index": 1,
+        "u": "The work conversation is still weighing on me",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "I feel guilty every time I see my manager",
+        "r": "Noted."
+      },
+      {
+        "index": 3,
+        "u": "I think I just need to rip off the bandaid",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "They'll be disappointed, but I guess that's better than avoiding it",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 10,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Still stressed about that conversation",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "Maybe I should just send an email to schedule a meeting",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 3,
+        "u": "Yes, actually that might be easier",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "Okay, I'll draft it today",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 11,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Guitar practice was okay today",
+        "r": "Acknowledged. Feel free to say more if you want."
+      },
+      {
+        "index": 2,
+        "u": "Trying to learn a new chord progression, it's getting harder",
+        "r": "Noted."
+      },
+      {
+        "index": 3,
+        "u": "A bit frustrated, the difficulty jumped up",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "The finger positions are more complex now",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 12,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Skipped guitar practice yesterday",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "Just didn't feel motivated, the new material is too hard",
+        "r": "Acknowledged. Share more if you're willing."
+      },
+      {
+        "index": 3,
+        "u": "The difficulty level increased and I'm struggling",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "Maybe I should go back to easier songs for a bit",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 13,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Practiced guitar today but not feeling it",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "I'm losing interest because everything feels too difficult now",
+        "r": "Noted."
+      },
+      {
+        "index": 3,
+        "u": "I loved playing songs I knew, but now it's all technical",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "That might help, I'll try that",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 14,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Finally scheduled that work meeting for next week",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "Relieved but also anxious about it",
+        "r": "Acknowledged. Say more if you'd like."
+      },
+      {
+        "index": 3,
+        "u": "The actual conversation, but at least it's scheduled now",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "Yes, the weight feels lighter already",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 15,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Did my meditation this morning",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "Still feeling anxious about that meeting next week though",
+        "r": "Noted."
+      },
+      {
+        "index": 3,
+        "u": "Trying to organize my thoughts and be clear about the delays",
+        "r": "Got it."
+      },
+      {
+        "index": 4,
+        "u": "Thanks, I appreciate the support",
+        "r": "Acknowledged."
+      }
+    ]
+  }
+]

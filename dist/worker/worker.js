@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
-const node_crypto_1 = require("node:crypto");
 const bullmq_1 = require("bullmq");
 const prisma_1 = require("../infra/prisma");
 const logger_1 = require("../infra/logger");
@@ -11,17 +10,16 @@ const replyQueue_1 = require("../queues/replyQueue");
 const messageTracking_1 = require("../infra/messageTracking");
 const ackReply_1 = require("../llm/ackReply");
 const whatsapp_1 = require("../infra/whatsapp");
-const pdf_1 = require("../infra/pdf");
+const p0_1 = require("../summary/p0");
+const p1_1 = require("../summary/p1");
+const pipeline_1 = require("../summary/pipeline");
+const redisArtifacts_1 = require("../summary/redisArtifacts");
 // Fail fast on startup
 if (!process.env.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required. Set it in .env");
 }
 if (!process.env.DATABASE_URL?.trim()) {
     throw new Error("DATABASE_URL is required. Set it in .env");
-}
-function simpleInputHash(messageIds, texts) {
-    const parts = messageIds.concat(texts.map((t) => t ?? ""));
-    return (0, node_crypto_1.createHash)("sha256").update(parts.join("|")).digest("hex").slice(0, 32);
 }
 const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
 const SUMMARY_REQUEST_ACCEPTED_TEXT = "I will generate a summary for past 15 days activity and send it to you in a bit. Please wait.";
@@ -92,49 +90,134 @@ const summaryWorker = new bullmq_1.Worker(summaryQueue_1.SUMMARY_QUEUE_NAME, asy
         return;
     const redis = (0, redis_1.getRedis)();
     const lockKey = summaryLockKey(userId);
-    const now = new Date();
-    const rangeStart = new Date(now);
-    rangeStart.setDate(rangeStart.getDate() - 15);
+    let summaryId = null;
+    let windowBundle = null;
     try {
-        const messages = await prisma_1.prisma.message.findMany({
-            where: {
-                userId,
-                createdAt: { gte: rangeStart, lte: now },
-            },
-            orderBy: { createdAt: "asc" },
-        });
-        const N = messages.length;
-        const messageIds = messages.map((m) => m.id);
-        const texts = messages.map((m) => m.text);
-        const inputHash = simpleInputHash(messageIds, texts);
-        const lines = [
-            "MeCove Summary (Past 15 Days)",
-            `Generated at: ${now.toISOString()}`,
-            `Messages: ${N}`,
-            "",
-        ];
-        for (const m of messages) {
-            if (!m.text || !m.text.trim())
-                continue;
-            lines.push(`${m.createdAt.toISOString()} - ${m.text.trim()}`);
-        }
-        if (lines.length === 4) {
-            lines.push("No text messages found in this period.");
-        }
-        const pdfBytes = (0, pdf_1.buildSummaryPdf)(lines);
-        const filename = `mecove-summary-${now.toISOString().slice(0, 10)}.pdf`;
-        await (0, whatsapp_1.sendWhatsAppDocument)(channelUserKey, pdfBytes, filename, "Your summary is ready.");
-        await prisma_1.prisma.summary.create({
+        windowBundle = await (0, p0_1.buildWindowBundle)(userId, "Asia/Kolkata");
+        const summary = await prisma_1.prisma.summary.create({
             data: {
                 userId,
-                rangeStart,
-                rangeEnd: now,
-                status: "success",
-                summaryText: `Summary PDF generated and sent (${N} messages).`,
-                inputMessagesCount: N,
-                inputHash,
+                rangeStart: new Date(windowBundle.rangeStartUtc),
+                rangeEnd: new Date(windowBundle.rangeEndUtc),
+                status: "processing",
+                inputMessagesCount: windowBundle.counts.totalMessages,
+                inputHash: windowBundle.inputHash,
             },
         });
+        summaryId = summary.id;
+        const result = await (0, pipeline_1.generateSummaryPipeline)({
+            userId,
+            summaryId,
+            timezone: "Asia/Kolkata",
+            windowBundle,
+        });
+        const filename = `mecove-summary-${windowBundle.window.endDate}.pdf`;
+        await (0, whatsapp_1.sendWhatsAppDocument)(channelUserKey, result.pdfBytes, filename, "Your summary is ready.");
+        await prisma_1.prisma.summary.update({
+            where: { id: summaryId },
+            data: {
+                status: "success",
+                summaryText: result.finalReportText,
+                modelName: result.modelName,
+                promptVersion: result.promptVersionString,
+                inputMessagesCount: windowBundle.counts.totalMessages,
+                inputHash: windowBundle.inputHash,
+                error: null,
+            },
+        });
+    }
+    catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        logger_1.logger.error("summary generation failed", {
+            userId,
+            summaryId,
+            error: reason,
+        });
+        let fallbackSent = false;
+        try {
+            if (!windowBundle) {
+                windowBundle = await (0, p0_1.buildWindowBundle)(userId, "Asia/Kolkata");
+            }
+            const fallback = (0, p1_1.buildMinimalFallbackReport)(windowBundle);
+            const fallbackFilename = `mecove-summary-${windowBundle.window.endDate}.pdf`;
+            await (0, whatsapp_1.sendWhatsAppDocument)(channelUserKey, fallback.pdfBytes, fallbackFilename, "Your summary is ready.");
+            if (summaryId) {
+                await prisma_1.prisma.summary.update({
+                    where: { id: summaryId },
+                    data: {
+                        status: "success_fallback",
+                        summaryText: fallback.reportText,
+                        modelName: null,
+                        promptVersion: "fallback_v1",
+                        inputMessagesCount: windowBundle.counts.totalMessages,
+                        inputHash: windowBundle.inputHash,
+                        error: `Fallback used: ${reason}`,
+                    },
+                });
+            }
+            else {
+                await prisma_1.prisma.summary.create({
+                    data: {
+                        userId,
+                        rangeStart: new Date(windowBundle.rangeStartUtc),
+                        rangeEnd: new Date(windowBundle.rangeEndUtc),
+                        status: "success_fallback",
+                        summaryText: fallback.reportText,
+                        promptVersion: "fallback_v1",
+                        inputMessagesCount: windowBundle.counts.totalMessages,
+                        inputHash: windowBundle.inputHash,
+                        error: `Fallback used: ${reason}`,
+                    },
+                });
+            }
+            fallbackSent = true;
+        }
+        catch (fallbackErr) {
+            logger_1.logger.error("fallback summary generation failed", {
+                userId,
+                summaryId,
+                error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+            });
+        }
+        if (!fallbackSent) {
+            if (summaryId) {
+                await prisma_1.prisma.summary.update({
+                    where: { id: summaryId },
+                    data: {
+                        status: "failed",
+                        error: reason,
+                    },
+                });
+            }
+            else if (windowBundle) {
+                await prisma_1.prisma.summary.create({
+                    data: {
+                        userId,
+                        rangeStart: new Date(windowBundle.rangeStartUtc),
+                        rangeEnd: new Date(windowBundle.rangeEndUtc),
+                        status: "failed",
+                        inputMessagesCount: windowBundle.counts.totalMessages,
+                        inputHash: windowBundle.inputHash,
+                        error: reason,
+                    },
+                });
+            }
+            else {
+                const now = new Date();
+                const rangeStart = new Date(now);
+                rangeStart.setDate(rangeStart.getDate() - 15);
+                await prisma_1.prisma.summary.create({
+                    data: {
+                        userId,
+                        rangeStart,
+                        rangeEnd: now,
+                        status: "failed",
+                        error: reason,
+                    },
+                });
+            }
+            throw err;
+        }
     }
     finally {
         await redis.del(lockKey);
@@ -161,6 +244,7 @@ const replyWorker = new bullmq_1.Worker(replyQueue_1.REPLY_QUEUE_NAME, async (jo
                 prisma_1.prisma.message.deleteMany({ where: { userId } }),
             ]);
             await (0, redis_1.getRedis)().del(`messages:${userId}`, summaryLockKey(userId));
+            await (0, redisArtifacts_1.clearSummaryArtifactsForUser)(userId);
             replyText = CHAT_CLEARED_TEXT;
         }
         else {
@@ -170,13 +254,15 @@ const replyWorker = new bullmq_1.Worker(replyQueue_1.REPLY_QUEUE_NAME, async (jo
         const shouldSendContextual = messagesAfterCount > 1 || Date.now() - messageTimestamp > 10_000;
         const contextualMessageId = shouldSendContextual ? sourceMessageId : undefined;
         await (0, whatsapp_1.sendWhatsAppReply)(channelUserKey, replyText, contextualMessageId);
-        await prisma_1.prisma.message.update({
-            where: { id: messageId },
-            data: {
-                repliedAt: new Date(),
-                replyText,
-            },
-        });
+        if (command !== "/clear") {
+            await prisma_1.prisma.message.update({
+                where: { id: messageId },
+                data: {
+                    repliedAt: new Date(),
+                    replyText,
+                },
+            });
+        }
         return;
     }
     // Generate reply using LLM

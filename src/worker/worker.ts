@@ -1,6 +1,4 @@
 import "dotenv/config";
-import { createHash } from "node:crypto";
-import type { Message } from "@prisma/client";
 import { Worker } from "bullmq";
 import { prisma } from "../infra/prisma";
 import { logger } from "../infra/logger";
@@ -23,7 +21,10 @@ import {
   sendWhatsAppDocument,
   sendWhatsAppReply,
 } from "../infra/whatsapp";
-import { buildSummaryPdf } from "../infra/pdf";
+import { buildWindowBundle } from "../summary/p0";
+import { buildMinimalFallbackReport } from "../summary/p1";
+import { generateSummaryPipeline } from "../summary/pipeline";
+import { clearSummaryArtifactsForUser } from "../summary/redisArtifacts";
 
 // Fail fast on startup
 if (!process.env.REDIS_URL?.trim()) {
@@ -31,11 +32,6 @@ if (!process.env.REDIS_URL?.trim()) {
 }
 if (!process.env.DATABASE_URL?.trim()) {
   throw new Error("DATABASE_URL is required. Set it in .env");
-}
-
-function simpleInputHash(messageIds: string[], texts: (string | null)[]): string {
-  const parts = messageIds.concat(texts.map((t) => t ?? ""));
-  return createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 32);
 }
 
 const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
@@ -120,54 +116,140 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
 
     const redis = getRedis();
     const lockKey = summaryLockKey(userId);
-
-    const now = new Date();
-    const rangeStart = new Date(now);
-    rangeStart.setDate(rangeStart.getDate() - 15);
+    let summaryId: string | null = null;
+    let windowBundle: Awaited<ReturnType<typeof buildWindowBundle>> | null = null;
 
     try {
-      const messages = await prisma.message.findMany({
-        where: {
-          userId,
-          createdAt: { gte: rangeStart, lte: now },
-        },
-        orderBy: { createdAt: "asc" },
-      });
-
-      const N = messages.length;
-      const messageIds = messages.map((m: Message) => m.id);
-      const texts = messages.map((m: Message) => m.text);
-      const inputHash = simpleInputHash(messageIds, texts);
-
-      const lines = [
-        "MeCove Summary (Past 15 Days)",
-        `Generated at: ${now.toISOString()}`,
-        `Messages: ${N}`,
-        "",
-      ];
-      for (const m of messages) {
-        if (!m.text || !m.text.trim()) continue;
-        lines.push(`${m.createdAt.toISOString()} - ${m.text.trim()}`);
-      }
-      if (lines.length === 4) {
-        lines.push("No text messages found in this period.");
-      }
-
-      const pdfBytes = buildSummaryPdf(lines);
-      const filename = `mecove-summary-${now.toISOString().slice(0, 10)}.pdf`;
-      await sendWhatsAppDocument(channelUserKey, pdfBytes, filename, "Your summary is ready.");
-
-      await prisma.summary.create({
+      windowBundle = await buildWindowBundle(userId, "Asia/Kolkata");
+      const summary = await prisma.summary.create({
         data: {
           userId,
-          rangeStart,
-          rangeEnd: now,
-          status: "success",
-          summaryText: `Summary PDF generated and sent (${N} messages).`,
-          inputMessagesCount: N,
-          inputHash,
+          rangeStart: new Date(windowBundle.rangeStartUtc),
+          rangeEnd: new Date(windowBundle.rangeEndUtc),
+          status: "processing",
+          inputMessagesCount: windowBundle.counts.totalMessages,
+          inputHash: windowBundle.inputHash,
         },
       });
+      summaryId = summary.id;
+
+      const result = await generateSummaryPipeline({
+        userId,
+        summaryId,
+        timezone: "Asia/Kolkata",
+        windowBundle,
+      });
+
+      const filename = `mecove-summary-${windowBundle.window.endDate}.pdf`;
+      await sendWhatsAppDocument(channelUserKey, result.pdfBytes, filename, "Your summary is ready.");
+
+      await prisma.summary.update({
+        where: { id: summaryId },
+        data: {
+          status: "success",
+          summaryText: result.finalReportText,
+          modelName: result.modelName,
+          promptVersion: result.promptVersionString,
+          inputMessagesCount: windowBundle.counts.totalMessages,
+          inputHash: windowBundle.inputHash,
+          error: null,
+        },
+      });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.error("summary generation failed", {
+        userId,
+        summaryId,
+        error: reason,
+      });
+
+      let fallbackSent = false;
+      try {
+        if (!windowBundle) {
+          windowBundle = await buildWindowBundle(userId, "Asia/Kolkata");
+        }
+        const fallback = buildMinimalFallbackReport(windowBundle);
+        const fallbackFilename = `mecove-summary-${windowBundle.window.endDate}.pdf`;
+        await sendWhatsAppDocument(
+          channelUserKey,
+          fallback.pdfBytes,
+          fallbackFilename,
+          "Your summary is ready."
+        );
+        if (summaryId) {
+          await prisma.summary.update({
+            where: { id: summaryId },
+            data: {
+              status: "success_fallback",
+              summaryText: fallback.reportText,
+              modelName: null,
+              promptVersion: "fallback_v1",
+              inputMessagesCount: windowBundle.counts.totalMessages,
+              inputHash: windowBundle.inputHash,
+              error: `Fallback used: ${reason}`,
+            },
+          });
+        } else {
+          await prisma.summary.create({
+            data: {
+              userId,
+              rangeStart: new Date(windowBundle.rangeStartUtc),
+              rangeEnd: new Date(windowBundle.rangeEndUtc),
+              status: "success_fallback",
+              summaryText: fallback.reportText,
+              promptVersion: "fallback_v1",
+              inputMessagesCount: windowBundle.counts.totalMessages,
+              inputHash: windowBundle.inputHash,
+              error: `Fallback used: ${reason}`,
+            },
+          });
+        }
+        fallbackSent = true;
+      } catch (fallbackErr) {
+        logger.error("fallback summary generation failed", {
+          userId,
+          summaryId,
+          error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+        });
+      }
+
+      if (!fallbackSent) {
+        if (summaryId) {
+          await prisma.summary.update({
+            where: { id: summaryId },
+            data: {
+              status: "failed",
+              error: reason,
+            },
+          });
+        } else if (windowBundle) {
+          await prisma.summary.create({
+            data: {
+              userId,
+              rangeStart: new Date(windowBundle.rangeStartUtc),
+              rangeEnd: new Date(windowBundle.rangeEndUtc),
+              status: "failed",
+              inputMessagesCount: windowBundle.counts.totalMessages,
+              inputHash: windowBundle.inputHash,
+              error: reason,
+            },
+          });
+        } else {
+          const now = new Date();
+          const rangeStart = new Date(now);
+          rangeStart.setDate(rangeStart.getDate() - 15);
+          await prisma.summary.create({
+            data: {
+              userId,
+              rangeStart,
+              rangeEnd: now,
+              status: "failed",
+              error: reason,
+            },
+          });
+        }
+        throw err;
+      }
     } finally {
       await redis.del(lockKey);
     }
@@ -212,6 +294,7 @@ const replyWorker = new Worker<GenerateReplyPayload>(
           prisma.message.deleteMany({ where: { userId } }),
         ]);
         await getRedis().del(`messages:${userId}`, summaryLockKey(userId));
+        await clearSummaryArtifactsForUser(userId);
         replyText = CHAT_CLEARED_TEXT;
       } else {
         replyText = UNKNOWN_COMMAND_TEXT;
@@ -222,13 +305,15 @@ const replyWorker = new Worker<GenerateReplyPayload>(
       const contextualMessageId = shouldSendContextual ? sourceMessageId : undefined;
       await sendWhatsAppReply(channelUserKey, replyText, contextualMessageId);
 
-      await prisma.message.update({
-        where: { id: messageId },
-        data: {
-          repliedAt: new Date(),
-          replyText,
-        },
-      });
+      if (command !== "/clear") {
+        await prisma.message.update({
+          where: { id: messageId },
+          data: {
+            repliedAt: new Date(),
+            replyText,
+          },
+        });
+      }
       return;
     }
 
