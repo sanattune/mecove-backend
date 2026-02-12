@@ -65,13 +65,35 @@ const replyWorker = new bullmq_1.Worker(replyQueue_1.REPLY_QUEUE_NAME, async (jo
     const { userId, messageId, identityId, sourceMessageId, channelUserKey, messageText, messageTimestamp, } = job.data;
     // Generate reply using LLM
     let replyText = "Noted.";
+    let shouldGenerateReport = false;
     try {
-        const ack = await (0, ackReply_1.generateAckReply)(userId, messageText);
-        if (ack.trim().length > 0)
-            replyText = ack.trim();
+        const decision = await (0, ackReply_1.generateAckDecision)(userId, messageText);
+        if (decision.replyText.trim().length > 0) {
+            replyText = decision.replyText.trim();
+        }
+        shouldGenerateReport = decision.shouldGenerateReport;
     }
     catch (err) {
         logger_1.logger.warn("LLM reply generation failed, using fallback", err);
+    }
+    if (shouldGenerateReport) {
+        try {
+            await summaryQueue_1.summaryQueue.add(summaryQueue_1.JOB_NAME_GENERATE_SUMMARY, {
+                userId,
+                range: "last_7_days",
+            });
+            logger_1.logger.info("summary generation requested by user intent", {
+                userId,
+                messageId,
+            });
+        }
+        catch (err) {
+            logger_1.logger.error("failed to enqueue summary generation", {
+                userId,
+                messageId,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
     }
     // Check how many messages came after this message
     const messagesAfterCount = await (0, messageTracking_1.countMessagesAfter)(userId, messageTimestamp);
@@ -84,7 +106,7 @@ const replyWorker = new bullmq_1.Worker(replyQueue_1.REPLY_QUEUE_NAME, async (jo
     // 2. The response is being sent more than 10 seconds after the message was received
     const shouldSendContextual = messagesAfterCount > 1 || timeSinceMessage > STALE_THRESHOLD_MS;
     // Essential log: reply decision and context
-    logger_1.logger.info("reply sent", {
+    logger_1.logger.info("reply decision", {
         messageId,
         contextual: shouldSendContextual,
         messagesAfter: messagesAfterCount,

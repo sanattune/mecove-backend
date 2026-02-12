@@ -1,5 +1,6 @@
 import type { ILLMService, CompleteOptions, ResolvedModelConfig } from "./types";
 import { loadLLMConfig } from "./config";
+import { logger } from "../infra/logger";
 
 const GROQ_BASE = "https://api.groq.com/openai/v1";
 
@@ -31,37 +32,94 @@ export class LlmViaApi implements ILLMService {
     prompt: string,
     maxTokens: number
   ): Promise<string> {
-    const url = `${GROQ_BASE}/chat/completions`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Groq API error ${res.status}: ${text}`);
-    }
-    const data = (await res.json()) as {
-      choices?: Array<{
-        message?: { content?: string | null };
-        finish_reason?: string;
-      }>;
+    const callGroq = async (tokens: number) => {
+      const url = `${GROQ_BASE}/chat/completions`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: tokens,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Groq API error ${res.status}: ${text}`);
+      }
+      const data = (await res.json()) as {
+        choices?: Array<{
+          message?: { content?: string | null };
+          finish_reason?: string;
+          [key: string]: unknown;
+        }>;
+        [key: string]: unknown;
+      };
+      return data;
     };
-    const choice = data.choices?.[0];
-    const content = choice?.message?.content;
-    if (content == null || String(content).trim() === "") {
-      const reason = choice?.finish_reason ?? "unknown";
-      throw new Error(
-        `Groq API returned empty content (finish_reason: ${reason}). Raw choice: ${JSON.stringify(choice)}`
-      );
+
+    const extractContent = (
+      data: {
+        choices?: Array<{
+          message?: { content?: string | null };
+          finish_reason?: string;
+          [key: string]: unknown;
+        }>;
+      },
+      tokenBudget: number
+    ): string => {
+      const choice = data.choices?.[0];
+      const content = choice?.message?.content;
+      if (content == null || String(content).trim() === "") {
+        const reason = choice?.finish_reason ?? "unknown";
+        throw new Error(
+          `Groq API returned empty content (finish_reason: ${reason}, max_tokens: ${tokenBudget}). Raw choice: ${JSON.stringify(choice)}`
+        );
+      }
+      return content;
+    };
+
+    const first = await callGroq(maxTokens);
+    try {
+      return extractContent(first, maxTokens);
+    } catch (err) {
+      const firstChoice = first.choices?.[0];
+      const firstReason = firstChoice?.finish_reason ?? "unknown";
+
+      // Some reasoning models can consume the generation budget and return empty content with finish_reason=length.
+      // Retry once with a larger completion budget before failing.
+      if (firstReason === "length") {
+        const retryTokens = Math.max(maxTokens * 4, 512);
+        logger.warn("empty Groq content with finish_reason=length, retrying with larger max_tokens", {
+          model,
+          firstMaxTokens: maxTokens,
+          retryMaxTokens: retryTokens,
+          rawChoice: firstChoice,
+        });
+        const second = await callGroq(retryTokens);
+        try {
+          return extractContent(second, retryTokens);
+        } catch (retryErr) {
+          logger.error("Groq completion failed after retry", {
+            model,
+            firstMaxTokens: maxTokens,
+            retryMaxTokens: retryTokens,
+            firstRaw: first,
+            retryRaw: second,
+          });
+          throw retryErr;
+        }
+      }
+
+      logger.error("Groq completion failed", {
+        model,
+        maxTokens,
+        raw: first,
+      });
+      throw err;
     }
-    return content;
   }
 }

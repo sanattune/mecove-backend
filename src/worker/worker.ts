@@ -6,6 +6,7 @@ import { prisma } from "../infra/prisma";
 import { logger } from "../infra/logger";
 import { getRedis } from "../infra/redis";
 import {
+  summaryQueue,
   SUMMARY_QUEUE_NAME,
   JOB_NAME_GENERATE_SUMMARY,
   type GenerateSummaryPayload,
@@ -16,7 +17,7 @@ import {
   type GenerateReplyPayload,
 } from "../queues/replyQueue";
 import { countMessagesAfter } from "../infra/messageTracking";
-import { generateAckReply } from "../llm/ackReply";
+import { generateAckDecision } from "../llm/ackReply";
 import { sendWhatsAppReply } from "../infra/whatsapp";
 
 // Fail fast on startup
@@ -94,11 +95,34 @@ const replyWorker = new Worker<GenerateReplyPayload>(
 
     // Generate reply using LLM
     let replyText = "Noted.";
+    let shouldGenerateReport = false;
     try {
-      const ack = await generateAckReply(userId, messageText);
-      if (ack.trim().length > 0) replyText = ack.trim();
+      const decision = await generateAckDecision(userId, messageText);
+      if (decision.replyText.trim().length > 0) {
+        replyText = decision.replyText.trim();
+      }
+      shouldGenerateReport = decision.shouldGenerateReport;
     } catch (err) {
       logger.warn("LLM reply generation failed, using fallback", err);
+    }
+
+    if (shouldGenerateReport) {
+      try {
+        await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, {
+          userId,
+          range: "last_7_days",
+        });
+        logger.info("summary generation requested by user intent", {
+          userId,
+          messageId,
+        });
+      } catch (err) {
+        logger.error("failed to enqueue summary generation", {
+          userId,
+          messageId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     // Check how many messages came after this message
@@ -115,7 +139,7 @@ const replyWorker = new Worker<GenerateReplyPayload>(
     const shouldSendContextual = messagesAfterCount > 1 || timeSinceMessage > STALE_THRESHOLD_MS;
 
     // Essential log: reply decision and context
-    logger.info("reply sent", {
+    logger.info("reply decision", {
       messageId,
       contextual: shouldSendContextual,
       messagesAfter: messagesAfterCount,

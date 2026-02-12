@@ -146,11 +146,6 @@ const server = node_http_1.default.createServer(async (req, res) => {
             });
             // Track message in Redis with server timestamp (for counting messages after)
             await (0, messageTracking_1.addMessageTracking)(user.id, message.id, serverTimestamp);
-            // Enqueue summary generation
-            await summaryQueue_1.summaryQueue.add(summaryQueue_1.JOB_NAME_GENERATE_SUMMARY, {
-                userId: user.id,
-                range: "last_7_days",
-            });
             // Enqueue reply generation (async)
             await replyQueue_1.replyQueue.add(replyQueue_1.JOB_NAME_GENERATE_REPLY, {
                 userId: user.id,
