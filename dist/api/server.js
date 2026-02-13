@@ -5,28 +5,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
 const node_http_1 = __importDefault(require("node:http"));
-const prisma_1 = require("../infra/prisma");
+const config_1 = require("../consent/config");
+const state_1 = require("../consent/state");
 const logger_1 = require("../infra/logger");
-const summaryQueue_1 = require("../queues/summaryQueue");
-const replyQueue_1 = require("../queues/replyQueue");
 const messageTracking_1 = require("../infra/messageTracking");
-function getInboundTextMessageSender(body) {
-    const msg = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (!msg || msg.type !== "text" || !msg.text?.body)
-        return null;
-    return msg.from ?? null;
-}
-function getInboundTextMessage(body) {
-    const msg = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (!msg)
-        return { messageId: undefined, timestamp: undefined, textBody: undefined, messageNode: undefined };
-    return {
-        messageId: msg.id,
-        timestamp: msg.timestamp,
-        textBody: msg.type === "text" ? msg.text?.body : undefined,
-        messageNode: msg,
-    };
-}
+const prisma_1 = require("../infra/prisma");
+const whatsapp_1 = require("../infra/whatsapp");
+const testFeedback_1 = require("../messages/testFeedback");
+const replyQueue_1 = require("../queues/replyQueue");
+const summaryQueue_1 = require("../queues/summaryQueue");
 // Fail fast on startup
 if (!process.env.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required. Set it in .env");
@@ -58,6 +45,33 @@ function readBody(req) {
         req.on("error", reject);
     });
 }
+function normalizeChannelUserKey(raw) {
+    const normalized = raw.trim().replace(/\s+/g, "");
+    return normalized.startsWith("+") ? normalized : `+${normalized}`;
+}
+function getInboundMessage(body) {
+    return body.entry?.[0]?.changes?.[0]?.value?.messages?.[0] ?? null;
+}
+function buildConsentPromptBody(step, preface) {
+    const section = config_1.consentConfig[step];
+    const lines = [];
+    if (preface && preface.trim().length > 0) {
+        lines.push(preface.trim());
+    }
+    lines.push(section.message.trim());
+    if (section.link && section.link.trim().length > 0) {
+        lines.push(`Read: ${section.link.trim()}`);
+    }
+    return lines.join("\n\n");
+}
+async function sendConsentPrompt(toDigits, step, preface) {
+    const section = config_1.consentConfig[step];
+    const ids = state_1.CONSENT_ACTION_IDS[step];
+    await (0, whatsapp_1.sendWhatsAppButtons)(toDigits, buildConsentPromptBody(step, preface), [
+        { id: ids.accept, title: section.buttons.accept },
+        { id: ids.later, title: section.buttons.later },
+    ]);
+}
 const server = node_http_1.default.createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/health") {
         res.statusCode = 200;
@@ -88,20 +102,13 @@ const server = node_http_1.default.createServer(async (req, res) => {
         try {
             const raw = await readBody(req);
             const body = JSON.parse(raw);
-            const from = getInboundTextMessageSender(body);
-            if (from === null) {
-                // Silent - no log needed for non-text messages
+            const inbound = getInboundMessage(body);
+            if (!inbound?.from) {
                 sendJSON(res, 200, { ok: true });
                 return;
             }
-            const { messageId, timestamp, textBody, messageNode } = getInboundTextMessage(body);
-            if (!messageId || timestamp === undefined || textBody === undefined) {
-                sendJSON(res, 200, { ok: true });
-                return;
-            }
-            // Normalize sender phone (single leading +)
-            const channelUserKey = from.startsWith("+") ? from : `+${from}`;
-            // Find or create user for this phone number (one user per WhatsApp number)
+            const channelUserKey = normalizeChannelUserKey(inbound.from);
+            const toDigits = channelUserKey.replace(/^\+/, "");
             let identity = await prisma_1.prisma.identity.findUnique({
                 where: {
                     channel_channelUserKey: {
@@ -121,11 +128,53 @@ const server = node_http_1.default.createServer(async (req, res) => {
                     },
                     include: { user: true },
                 });
-                // Silent - no log needed for normal operation
             }
             const user = identity.user;
+            const pendingStep = (0, state_1.getPendingConsentStep)(user, config_1.consentConfig);
+            if (pendingStep !== null) {
+                const action = (0, state_1.parseConsentAction)(inbound);
+                if (action?.type === "accept" && action.step === pendingStep) {
+                    const updatedUser = await prisma_1.prisma.user.update((0, state_1.applyConsentAcceptance)(user.id, pendingStep, config_1.consentConfig[pendingStep].version));
+                    const nextStep = (0, state_1.getPendingConsentStep)(updatedUser, config_1.consentConfig);
+                    if (nextStep === null) {
+                        await (0, whatsapp_1.sendWhatsAppReply)(toDigits, config_1.consentConfig.templates.completed);
+                    }
+                    else {
+                        await sendConsentPrompt(toDigits, nextStep);
+                    }
+                }
+                else {
+                    const preface = action?.type === "later"
+                        ? config_1.consentConfig.templates.later
+                        : config_1.consentConfig.templates.blocked;
+                    await sendConsentPrompt(toDigits, pendingStep, preface);
+                }
+                sendJSON(res, 200, { ok: true });
+                return;
+            }
+            // Continue normal processing only for text messages once consent is complete.
+            if (inbound.type !== "text") {
+                sendJSON(res, 200, { ok: true });
+                return;
+            }
+            const textBody = inbound.text?.body;
+            const messageId = inbound.id;
+            const timestamp = inbound.timestamp;
+            if (!messageId || timestamp === undefined || textBody === undefined) {
+                sendJSON(res, 200, { ok: true });
+                return;
+            }
+            const feedbackCommand = (0, testFeedback_1.parseTestFeedbackCommand)(textBody);
+            if (feedbackCommand.isCommand && feedbackCommand.feedback === null) {
+                await (0, whatsapp_1.sendWhatsAppReply)(toDigits, testFeedback_1.TEST_FEEDBACK_MISSING_REPLY, messageId);
+                sendJSON(res, 200, { ok: true });
+                return;
+            }
             const clientTimestamp = new Date(Number(timestamp) * 1000);
-            const serverTimestamp = Date.now(); // Use server arrival time for Redis tracking
+            const serverTimestamp = Date.now();
+            const storedText = feedbackCommand.isCommand && feedbackCommand.feedback
+                ? (0, testFeedback_1.toStoredTestFeedback)(feedbackCommand.feedback)
+                : textBody;
             const message = await prisma_1.prisma.message.upsert({
                 where: {
                     identityId_sourceMessageId: {
@@ -138,29 +187,94 @@ const server = node_http_1.default.createServer(async (req, res) => {
                     userId: user.id,
                     identityId: identity.id,
                     contentType: "text",
-                    text: textBody,
+                    text: storedText,
                     sourceMessageId: messageId,
                     clientTimestamp,
-                    rawPayload: (messageNode ?? body),
+                    rawPayload: inbound,
                 },
             });
-            // Track message in Redis with server timestamp (for counting messages after)
             await (0, messageTracking_1.addMessageTracking)(user.id, message.id, serverTimestamp);
-            // Enqueue reply generation (async)
             await replyQueue_1.replyQueue.add(replyQueue_1.JOB_NAME_GENERATE_REPLY, {
                 userId: user.id,
                 messageId: message.id,
                 identityId: identity.id,
                 sourceMessageId: messageId,
-                channelUserKey: from.replace(/^\+/, ""),
+                channelUserKey: toDigits,
                 messageText: textBody,
-                messageTimestamp: serverTimestamp, // Use server timestamp for comparison
+                messageTimestamp: serverTimestamp,
             });
-            // Silent - no log needed for normal operation
             sendJSON(res, 200, { ok: true });
         }
         catch (err) {
             logger_1.logger.error("POST /webhooks/whatsapp error:", err);
+            sendJSON(res, 500, {
+                ok: false,
+                error: err instanceof Error ? err.message : "Unknown error",
+            });
+        }
+        return;
+    }
+    if (req.method === "GET" && pathname === "/debug/consent-status") {
+        try {
+            const params = parseQuery(req);
+            const rawChannelUserKey = params.get("channelUserKey")?.trim();
+            if (!rawChannelUserKey) {
+                sendJSON(res, 400, {
+                    ok: false,
+                    error: "channelUserKey query param is required",
+                });
+                return;
+            }
+            const channelUserKey = normalizeChannelUserKey(rawChannelUserKey);
+            const identity = await prisma_1.prisma.identity.findUnique({
+                where: {
+                    channel_channelUserKey: {
+                        channel: "whatsapp",
+                        channelUserKey,
+                    },
+                },
+                include: { user: true },
+            });
+            if (!identity) {
+                sendJSON(res, 404, {
+                    ok: false,
+                    error: `Identity not found for ${channelUserKey}`,
+                });
+                return;
+            }
+            const pendingStep = (0, state_1.getPendingConsentStep)(identity.user, config_1.consentConfig);
+            sendJSON(res, 200, {
+                ok: true,
+                userId: identity.user.id,
+                channelUserKey: identity.channelUserKey,
+                pendingStep,
+                accepted: {
+                    privacy: {
+                        accepted: Boolean(identity.user.privacyAcceptedAt &&
+                            identity.user.privacyAcceptedVersion === config_1.consentConfig.privacy.version),
+                        acceptedAt: identity.user.privacyAcceptedAt,
+                        acceptedVersion: identity.user.privacyAcceptedVersion,
+                        currentVersion: config_1.consentConfig.privacy.version,
+                    },
+                    terms: {
+                        accepted: Boolean(identity.user.termsAcceptedAt &&
+                            identity.user.termsAcceptedVersion === config_1.consentConfig.terms.version),
+                        acceptedAt: identity.user.termsAcceptedAt,
+                        acceptedVersion: identity.user.termsAcceptedVersion,
+                        currentVersion: config_1.consentConfig.terms.version,
+                    },
+                    mvp: {
+                        accepted: Boolean(identity.user.mvpAcceptedAt &&
+                            identity.user.mvpAcceptedVersion === config_1.consentConfig.mvp.version),
+                        acceptedAt: identity.user.mvpAcceptedAt,
+                        acceptedVersion: identity.user.mvpAcceptedVersion,
+                        currentVersion: config_1.consentConfig.mvp.version,
+                    },
+                },
+            });
+        }
+        catch (err) {
+            logger_1.logger.error("GET /debug/consent-status error:", err);
             sendJSON(res, 500, {
                 ok: false,
                 error: err instanceof Error ? err.message : "Unknown error",

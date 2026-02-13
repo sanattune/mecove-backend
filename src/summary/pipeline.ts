@@ -51,6 +51,8 @@ export async function generateSummaryPipeline(
       prompt: buildCanonicalizerPrompt(windowBundle),
       maxTokens: 3200,
       validate: isCanonicalDoc,
+      complexity: 'medium',
+      reasoning: false,
     });
     logger.info("summary stage done", {
       summaryId: input.summaryId,
@@ -65,6 +67,8 @@ export async function generateSummaryPipeline(
       prompt: buildWriterS2S3Prompt(canonical, windowBundle.section3AllowedByCounts),
       maxTokens: 2200,
       validate: isDraftS2S3,
+      complexity: 'medium',
+      reasoning: false,
     });
     logger.info("summary stage done", {
       summaryId: input.summaryId,
@@ -79,6 +83,8 @@ export async function generateSummaryPipeline(
       prompt: buildWriterS4Prompt(canonical),
       maxTokens: 3600,
       validate: isDraftS4,
+      complexity: 'medium',
+      reasoning: false,
     });
     logger.info("summary stage done", {
       summaryId: input.summaryId,
@@ -98,6 +104,8 @@ export async function generateSummaryPipeline(
       ),
       maxTokens: 3500,
       validate: isFinalSections,
+      complexity: 'high',
+      reasoning: true,
     });
     logger.info("summary stage done", {
       summaryId: input.summaryId,

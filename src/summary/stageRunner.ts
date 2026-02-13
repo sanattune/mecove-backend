@@ -36,6 +36,8 @@ type RunJsonStageOptions<T> = {
   maxTokens: number;
   validate: (value: unknown) => value is T;
   llm?: LlmViaApi;
+  complexity?: 'low' | 'medium' | 'high';
+  reasoning?: boolean;
 };
 
 export async function runJsonStage<T>(options: RunJsonStageOptions<T>): Promise<T> {
@@ -47,6 +49,8 @@ export async function runJsonStage<T>(options: RunJsonStageOptions<T>): Promise<
     const raw = await llm.complete({
       prompt: options.prompt,
       maxTokens: options.maxTokens,
+      complexity: options.complexity,
+      reasoning: options.reasoning,
     });
     lastRaw = raw;
     const latencyMs = Date.now() - startedAt;

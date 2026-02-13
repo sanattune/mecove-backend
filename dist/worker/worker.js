@@ -9,6 +9,7 @@ const summaryQueue_1 = require("../queues/summaryQueue");
 const replyQueue_1 = require("../queues/replyQueue");
 const messageTracking_1 = require("../infra/messageTracking");
 const ackReply_1 = require("../llm/ackReply");
+const testFeedback_1 = require("../messages/testFeedback");
 const whatsapp_1 = require("../infra/whatsapp");
 const p0_1 = require("../summary/p0");
 const p1_1 = require("../summary/p1");
@@ -27,7 +28,7 @@ const SUMMARY_ALREADY_RUNNING_TEXT = "Your previous summary is still being gener
 const SUMMARY_TIMEOUT_TEXT = "Summary generation timed out. Please request again.";
 const CHATLOG_SENT_TEXT = "I have sent your chat log as an attachment.";
 const CHAT_CLEARED_TEXT = "Your chat history has been cleared.";
-const UNKNOWN_COMMAND_TEXT = "Unknown command. Available: /chatlog, /clear";
+const UNKNOWN_COMMAND_TEXT = "Unknown command. Available: /chatlog, /clear, /f";
 function summaryLockKey(userId) {
     return `summary:inflight:${userId}`;
 }
@@ -246,6 +247,9 @@ const replyWorker = new bullmq_1.Worker(replyQueue_1.REPLY_QUEUE_NAME, async (jo
             await (0, redis_1.getRedis)().del(`messages:${userId}`, summaryLockKey(userId));
             await (0, redisArtifacts_1.clearSummaryArtifactsForUser)(userId);
             replyText = CHAT_CLEARED_TEXT;
+        }
+        else if (command === testFeedback_1.TEST_FEEDBACK_COMMAND) {
+            replyText = testFeedback_1.TEST_FEEDBACK_SUCCESS_REPLY;
         }
         else {
             replyText = UNKNOWN_COMMAND_TEXT;

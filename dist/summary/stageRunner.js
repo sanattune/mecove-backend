@@ -39,6 +39,8 @@ async function runJsonStage(options) {
         const raw = await llm.complete({
             prompt: options.prompt,
             maxTokens: options.maxTokens,
+            complexity: options.complexity,
+            reasoning: options.reasoning,
         });
         lastRaw = raw;
         const latencyMs = Date.now() - startedAt;

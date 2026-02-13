@@ -9,6 +9,49 @@ function escapePdfText(input) {
         .replace(/\r/g, "")
         .replace(/\n/g, " ");
 }
+/**
+ * Wrap text to fit within PDF page width.
+ * Page width: 595 points, margins: 40 left + 40 right = 80, usable width: ~515 points
+ * Font size: 10pt Helvetica, approximate char width: ~6 points
+ * Max characters per line: ~85, using 80 for safety
+ */
+function wrapText(text, maxWidth = 80) {
+    if (text.length <= maxWidth) {
+        return [text];
+    }
+    const words = text.split(/\s+/);
+    const wrapped = [];
+    let currentLine = "";
+    for (const word of words) {
+        // If word itself is longer than maxWidth, break it
+        if (word.length > maxWidth) {
+            if (currentLine) {
+                wrapped.push(currentLine.trim());
+                currentLine = "";
+            }
+            // Break long word into chunks
+            for (let i = 0; i < word.length; i += maxWidth) {
+                wrapped.push(word.slice(i, i + maxWidth));
+            }
+            continue;
+        }
+        // Check if adding this word would exceed maxWidth
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        if (testLine.length <= maxWidth) {
+            currentLine = testLine;
+        }
+        else {
+            if (currentLine) {
+                wrapped.push(currentLine.trim());
+            }
+            currentLine = word;
+        }
+    }
+    if (currentLine) {
+        wrapped.push(currentLine.trim());
+    }
+    return wrapped.length > 0 ? wrapped : [text];
+}
 function buildPdfContentLines(lines) {
     let y = 790;
     const content = ["BT", "/F1 10 Tf"];
@@ -16,9 +59,16 @@ function buildPdfContentLines(lines) {
         if (y < 40) {
             break; // keep single-page for MVP
         }
-        const safe = escapePdfText(line);
-        content.push(`1 0 0 1 40 ${y} Tm (${safe}) Tj`);
-        y -= 14;
+        // Wrap long lines to fit page width
+        const wrapped = wrapText(line);
+        for (const wrappedLine of wrapped) {
+            if (y < 40) {
+                break;
+            }
+            const safe = escapePdfText(wrappedLine);
+            content.push(`1 0 0 1 40 ${y} Tm (${safe}) Tj`);
+            y -= 14;
+        }
     }
     content.push("ET");
     return content.join("\n");

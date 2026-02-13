@@ -73,6 +73,9 @@ WHATSAPP_PERMANENT_TOKEN=your_permanent_token
 # LLM (for summary generation and acknowledgment replies)
 GROQ_API_KEY=your_groq_api_key
 
+# Consent gate config
+CONSENT_CONFIG_PATH=consent.config.yaml
+
 # Optional: ngrok for webhook tunneling
 NGROK_AUTHTOKEN=your_ngrok_token
 NGROK_TARGET=host.docker.internal:3000

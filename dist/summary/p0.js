@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildWindowBundle = buildWindowBundle;
 const node_crypto_1 = require("node:crypto");
 const prisma_1 = require("../infra/prisma");
+const testFeedback_1 = require("../messages/testFeedback");
 const IST_OFFSET_MINUTES = 330;
 const DAY_MS = 24 * 60 * 60 * 1000;
 function toIstDateString(date) {
@@ -60,7 +61,7 @@ async function buildWindowBundle(userId, timezone = "Asia/Kolkata", now = new Da
         const raw = (msg.text ?? "").trim();
         if (!raw)
             continue;
-        if (raw.startsWith("/"))
+        if (raw.startsWith("/") || (0, testFeedback_1.isStoredTestFeedbackText)(raw))
             continue;
         const date = toIstDateString(msg.createdAt);
         if (!byDay.has(date)) {

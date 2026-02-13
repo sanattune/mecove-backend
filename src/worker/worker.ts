@@ -17,6 +17,10 @@ import {
 import { countMessagesAfter } from "../infra/messageTracking";
 import { generateAckDecision } from "../llm/ackReply";
 import {
+  TEST_FEEDBACK_COMMAND,
+  TEST_FEEDBACK_SUCCESS_REPLY,
+} from "../messages/testFeedback";
+import {
   sendWhatsAppBufferDocument,
   sendWhatsAppDocument,
   sendWhatsAppReply,
@@ -42,7 +46,7 @@ const SUMMARY_ALREADY_RUNNING_TEXT =
 const SUMMARY_TIMEOUT_TEXT = "Summary generation timed out. Please request again.";
 const CHATLOG_SENT_TEXT = "I have sent your chat log as an attachment.";
 const CHAT_CLEARED_TEXT = "Your chat history has been cleared.";
-const UNKNOWN_COMMAND_TEXT = "Unknown command. Available: /chatlog, /clear";
+const UNKNOWN_COMMAND_TEXT = "Unknown command. Available: /chatlog, /clear, /f";
 
 function summaryLockKey(userId: string): string {
   return `summary:inflight:${userId}`;
@@ -296,6 +300,8 @@ const replyWorker = new Worker<GenerateReplyPayload>(
         await getRedis().del(`messages:${userId}`, summaryLockKey(userId));
         await clearSummaryArtifactsForUser(userId);
         replyText = CHAT_CLEARED_TEXT;
+      } else if (command === TEST_FEEDBACK_COMMAND) {
+        replyText = TEST_FEEDBACK_SUCCESS_REPLY;
       } else {
         replyText = UNKNOWN_COMMAND_TEXT;
       }

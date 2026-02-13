@@ -1,0 +1,28 @@
+privacy:
+  version: "v1"
+  message: "Privacy (sample): We store your messages to provide chat logging and summary generation. We do not share your data by default."
+  link: "https://example.com/privacy"
+  buttons:
+    accept: "Accept Privacy"
+    later: "Later"
+
+terms:
+  version: "v1"
+  message: "Terms (sample): This is an MVP service for note capture and summary support. It is not emergency support or medical advice."
+  link: "https://example.com/terms"
+  buttons:
+    accept: "Accept Terms"
+    later: "Later"
+
+mvp:
+  version: "v1"
+  message: "MVP notice (sample): Features may change. You can request deletion of your data anytime."
+  link: "https://example.com/mvp-notice"
+  buttons:
+    accept: "Accept MVP Notice"
+    later: "Later"
+
+templates:
+  blocked: "Before we continue, please complete this required consent step."
+  later: "No problem. You can accept now or come back later."
+  completed: "Setup complete. Please resend your last message so I can process it."

@@ -14,6 +14,10 @@ export interface CompleteOptions {
   prompt: string;
   /** Max tokens to generate (optional; model default used if not set). */
   maxTokens?: number;
+  /** Complexity level: 'low' | 'medium' | 'high'. Used to select appropriate model. */
+  complexity?: 'low' | 'medium' | 'high';
+  /** Whether this task requires reasoning capabilities (e.g., deep analysis, pattern recognition). */
+  reasoning?: boolean;
 }
 
 /** Resolved model entry from config (one provider + one model). */

@@ -1,5 +1,5 @@
 import type { ILLMService, CompleteOptions, ResolvedModelConfig } from "./types";
-import { loadLLMConfig } from "./config";
+import { loadLLMConfig, loadLLMConfigForTask } from "./config";
 import { logger } from "../infra/logger";
 
 const GROQ_BASE = "https://api.groq.com/openai/v1";
@@ -7,17 +7,24 @@ const GROQ_BASE = "https://api.groq.com/openai/v1";
 /**
  * LLM implementation that calls the configured provider's API (e.g. Groq) for completions.
  * Config is read from config/llm.yaml; api_key is resolved from env.
+ * Model selection is dynamic based on complexity and reasoning requirements in CompleteOptions.
  */
 export class LlmViaApi implements ILLMService {
-  private config: ResolvedModelConfig;
+  private defaultConfig: ResolvedModelConfig;
 
   constructor(config?: ResolvedModelConfig) {
-    this.config = config ?? loadLLMConfig();
+    this.defaultConfig = config ?? loadLLMConfig();
   }
 
   async complete(options: CompleteOptions): Promise<string> {
-    const { prompt, maxTokens } = options;
-    const { provider, modelName, apiKey, maxTokens: configMax } = this.config;
+    const { prompt, maxTokens, complexity, reasoning } = options;
+    
+    // Select model dynamically based on task requirements
+    const config = complexity !== undefined || reasoning !== undefined
+      ? loadLLMConfigForTask({ complexity, reasoning })
+      : this.defaultConfig;
+    
+    const { provider, modelName, apiKey, maxTokens: configMax } = config;
     const max = maxTokens ?? configMax;
 
     if (provider === "groq") {

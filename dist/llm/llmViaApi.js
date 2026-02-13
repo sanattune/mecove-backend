@@ -7,15 +7,20 @@ const GROQ_BASE = "https://api.groq.com/openai/v1";
 /**
  * LLM implementation that calls the configured provider's API (e.g. Groq) for completions.
  * Config is read from config/llm.yaml; api_key is resolved from env.
+ * Model selection is dynamic based on complexity and reasoning requirements in CompleteOptions.
  */
 class LlmViaApi {
-    config;
+    defaultConfig;
     constructor(config) {
-        this.config = config ?? (0, config_1.loadLLMConfig)();
+        this.defaultConfig = config ?? (0, config_1.loadLLMConfig)();
     }
     async complete(options) {
-        const { prompt, maxTokens } = options;
-        const { provider, modelName, apiKey, maxTokens: configMax } = this.config;
+        const { prompt, maxTokens, complexity, reasoning } = options;
+        // Select model dynamically based on task requirements
+        const config = complexity !== undefined || reasoning !== undefined
+            ? (0, config_1.loadLLMConfigForTask)({ complexity, reasoning })
+            : this.defaultConfig;
+        const { provider, modelName, apiKey, maxTokens: configMax } = config;
         const max = maxTokens ?? configMax;
         if (provider === "groq") {
             return this.groqComplete(modelName, apiKey, prompt, max);

@@ -1,12 +1,42 @@
 # LLM provider and model config. Env vars like ${GROQ_API_KEY} are resolved from process.env.
-# For now: one provider (groq), one model (20b) for all complexities.
+# Models are selected based on complexity (low/medium/high) and reasoning requirements.
+# Selection algorithm:
+#   1. Filter by reasoning requirement (if specified)
+#   2. Match complexity level (if specified)
+#   3. Fallback to first available model
 
 providers:
   groq:
     api_key: ${GROQ_API_KEY}
     models:
-      - name: openai/gpt-oss-20b
-        complexity: [low, medium, high]
+      # Fast, cheap model for simple tasks (low complexity)
+      - name: llama-3.1-8b-instant
+        complexity: [low]
+        reasoning: false
         tasks: [text_generation, summarization]
-        cost_per_1m_tokens: 0.9
+        cost_per_1m_tokens: 0.13
+        max_tokens: 131072
+        
+      # Balanced model for medium complexity tasks
+      - name: openai/gpt-oss-20b
+        complexity: [low, medium]
+        reasoning: false
+        tasks: [text_generation, summarization]
+        cost_per_1m_tokens: 0.375
+        max_tokens: 65536
+        
+      # High capability model for complex tasks
+      - name: llama-3.3-70b-versatile
+        complexity: [medium, high]
+        reasoning: false
+        tasks: [text_generation, summarization]
+        cost_per_1m_tokens: 1.38
         max_tokens: 32768
+        
+      # Reasoning-capable model (for tasks requiring deep analysis)
+      - name: openai/gpt-oss-120b
+        complexity: [high]
+        reasoning: true
+        tasks: [text_generation, summarization]
+        cost_per_1m_tokens: 0.75
+        max_tokens: 65536

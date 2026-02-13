@@ -68,6 +68,70 @@ export async function sendWhatsAppReply(
   }
 }
 
+export type WhatsAppReplyButton = {
+  id: string;
+  title: string;
+};
+
+export async function sendWhatsAppButtons(
+  toDigits: string,
+  body: string,
+  buttons: WhatsAppReplyButton[]
+): Promise<void> {
+  if (buttons.length === 0 || buttons.length > 3) {
+    throw new Error("sendWhatsAppButtons requires 1 to 3 buttons");
+  }
+  const sanitizedButtons = buttons.map((b) => ({
+    id: b.id.trim(),
+    title: b.title.trim(),
+  }));
+  const invalid = sanitizedButtons.find(
+    (b) => b.id.length === 0 || b.title.length === 0 || b.title.length > 20
+  );
+  if (invalid) {
+    throw new Error("sendWhatsAppButtons received invalid button id/title");
+  }
+
+  const { phoneId, token } = getWhatsAppEnv();
+  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
+  const payload = {
+    messaging_product: "whatsapp",
+    to: toDigits,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: body },
+      action: {
+        buttons: sanitizedButtons.map((b) => ({
+          type: "reply",
+          reply: {
+            id: b.id,
+            title: b.title,
+          },
+        })),
+      },
+    },
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error("WhatsApp interactive message error", {
+      status: response.status,
+      error: errorText,
+      payload,
+    });
+    throw new Error(`WhatsApp interactive message error: ${response.status} ${errorText}`);
+  }
+}
+
 export async function sendWhatsAppDocument(
   toDigits: string,
   pdfBytes: Buffer,

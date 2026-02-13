@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { prisma } from "../infra/prisma";
+import { isStoredTestFeedbackText } from "../messages/testFeedback";
 import type { SignalBucket, WindowBundle, WindowDay } from "./types";
 
 const IST_OFFSET_MINUTES = 330;
@@ -68,7 +69,7 @@ export async function buildWindowBundle(
   for (const msg of messages) {
     const raw = (msg.text ?? "").trim();
     if (!raw) continue;
-    if (raw.startsWith("/")) continue;
+    if (raw.startsWith("/") || isStoredTestFeedbackText(raw)) continue;
 
     const date = toIstDateString(msg.createdAt);
     if (!byDay.has(date)) {
@@ -107,4 +108,3 @@ export async function buildWindowBundle(
     days,
   };
 }
-

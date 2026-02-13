@@ -1,4 +1,5 @@
 import { prisma } from "../infra/prisma";
+import { isStoredTestFeedbackText } from "../messages/testFeedback";
 import { LlmViaApi } from "./llmViaApi";
 
 const llm = new LlmViaApi();
@@ -88,6 +89,8 @@ LATEST_USER_MESSAGE:
 Your JSON response:`;
 
 const FALLBACK_REPLY = "Noted.";
+const ACK_CONTEXT_TARGET_COUNT = 10;
+const ACK_CONTEXT_FETCH_LIMIT = 30;
 
 function parseAckDecision(raw: string): AckDecision {
   const trimmed = raw.trim();
@@ -135,13 +138,16 @@ export async function generateAckDecision(
   freshMessageText: string,
   saveStatus: SaveStatus = "saved"
 ): Promise<AckDecision> {
-  const messages = await prisma.message.findMany({
+  const recentMessages = await prisma.message.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
-    take: 10,
+    take: ACK_CONTEXT_FETCH_LIMIT,
     select: { text: true, createdAt: true, replyText: true, repliedAt: true },
   });
-  const oldestFirst = messages.reverse();
+  const filteredRecent = recentMessages
+    .filter((m) => !isStoredTestFeedbackText(m.text))
+    .slice(0, ACK_CONTEXT_TARGET_COUNT);
+  const oldestFirst = filteredRecent.reverse();
   
   // Format messages as alternating User/Bot pairs
   const lines: string[] = [];
@@ -160,6 +166,8 @@ export async function generateAckDecision(
   const reply = await llm.complete({
     prompt,
     maxTokens: 200,
+    complexity: 'low',
+    reasoning: false,
   });
   return parseAckDecision(reply);
 }

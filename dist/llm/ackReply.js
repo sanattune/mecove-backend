@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAckDecision = generateAckDecision;
 const prisma_1 = require("../infra/prisma");
+const testFeedback_1 = require("../messages/testFeedback");
 const llmViaApi_1 = require("./llmViaApi");
 const llm = new llmViaApi_1.LlmViaApi();
 const ACK_PROMPT = `You are MeCove's acknowledgment reply engine for WhatsApp.
@@ -80,6 +81,8 @@ LATEST_USER_MESSAGE:
 
 Your JSON response:`;
 const FALLBACK_REPLY = "Noted.";
+const ACK_CONTEXT_TARGET_COUNT = 10;
+const ACK_CONTEXT_FETCH_LIMIT = 30;
 function parseAckDecision(raw) {
     const trimmed = raw.trim();
     let candidate = trimmed;
@@ -117,13 +120,16 @@ function parseAckDecision(raw) {
  * and returns reply text + summary-generation intent.
  */
 async function generateAckDecision(userId, freshMessageText, saveStatus = "saved") {
-    const messages = await prisma_1.prisma.message.findMany({
+    const recentMessages = await prisma_1.prisma.message.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
-        take: 10,
+        take: ACK_CONTEXT_FETCH_LIMIT,
         select: { text: true, createdAt: true, replyText: true, repliedAt: true },
     });
-    const oldestFirst = messages.reverse();
+    const filteredRecent = recentMessages
+        .filter((m) => !(0, testFeedback_1.isStoredTestFeedbackText)(m.text))
+        .slice(0, ACK_CONTEXT_TARGET_COUNT);
+    const oldestFirst = filteredRecent.reverse();
     // Format messages as alternating User/Bot pairs
     const lines = [];
     for (const m of oldestFirst) {
@@ -140,6 +146,8 @@ async function generateAckDecision(userId, freshMessageText, saveStatus = "saved
     const reply = await llm.complete({
         prompt,
         maxTokens: 200,
+        complexity: 'low',
+        reasoning: false,
     });
     return parseAckDecision(reply);
 }
