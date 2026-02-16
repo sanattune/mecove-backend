@@ -17,17 +17,26 @@ services:
 
   api:
     build: .
-    command: sh -c "pnpm prisma migrate deploy && pnpm start:api"
+    command: sh -c "pnpm prisma migrate deploy && (sleep 5 && node dist/scripts/syncMetaWebhook.js &) && pnpm start:api"
     environment:
       DATABASE_URL: postgresql://mecove:mecove@postgres:5432/mecove
       REDIS_URL: redis://redis:6379
       PORT: "3000"
+      CONSENT_CONFIG_PATH: consent.config.yaml
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_PERMANENT_TOKEN: ${WHATSAPP_PERMANENT_TOKEN:-}
+      WHATSAPP_APP_ID: ${WHATSAPP_APP_ID:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+      NGROK_ADMIN_URL: http://ngrok:4040
     ports:
       - "3000:3000"
     depends_on:
       - postgres
       - redis
+      - ngrok
 
   worker:
     build: .
@@ -35,6 +44,10 @@ services:
     environment:
       DATABASE_URL: postgresql://mecove:mecove@postgres:5432/mecove
       REDIS_URL: redis://redis:6379
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_PERMANENT_TOKEN: ${WHATSAPP_PERMANENT_TOKEN:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      SARVAM_API_KEY: ${SARVAM_API_KEY:-}
     depends_on:
       - postgres
       - redis

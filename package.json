@@ -11,13 +11,12 @@
     "start:api": "node dist/api/server.js",
     "start:worker": "node dist/worker/worker.js",
     "db:smoke": "tsx src/scripts/db_smoke.ts",
-    "sync:webhook": "tsx scripts/syncMetaWebhook.ts",
+    "sync:webhook": "tsx src/scripts/syncMetaWebhook.ts",
     "check:reply-queue": "tsx src/scripts/check_reply_queue.ts",
     "seed:chat": "tsx seed/seedChatData.ts"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
-    "dotenv": "^17.2.4",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   },
@@ -25,6 +24,7 @@
     "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.3.0",
     "bullmq": "^5.67.3",
+    "dotenv": "^17.2.4",
     "ioredis": "^5.9.2",
     "pg": "^8.18.0",
     "prisma": "^7.3.0",

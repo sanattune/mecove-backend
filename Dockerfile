@@ -8,6 +8,7 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml* ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
+COPY consent.config.yaml ./
 
 RUN if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi
 
@@ -30,6 +31,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
+COPY --from=build /app/consent.config.yaml ./
 
 USER node
 

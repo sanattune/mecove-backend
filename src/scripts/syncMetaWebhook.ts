@@ -1,4 +1,4 @@
-import "dotenv/config";
+try { require("dotenv/config"); } catch { /* dotenv optional in Docker */ }
 
 const NGROK_ADMIN_URL =
   process.env.NGROK_ADMIN_URL?.trim() || "http://localhost:4040";

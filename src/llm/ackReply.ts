@@ -1,8 +1,14 @@
 import { prisma } from "../infra/prisma";
+import { logger } from "../infra/logger";
 import { isStoredTestFeedbackText } from "../messages/testFeedback";
+import { createSarvamClientIfConfigured } from "./sarvamViaApi";
 import { LlmViaApi } from "./llmViaApi";
 
-const llm = new LlmViaApi();
+// Primary model for ack/reply: Sarvam when SARVAM_API_KEY is set, else Groq via LlmViaApi.
+// Summary report generation uses LlmViaApi only (see summary/stageRunner.ts).
+const sarvam = createSarvamClientIfConfigured();
+const fallbackLlm = new LlmViaApi();
+const llm = sarvam ?? fallbackLlm;
 
 export type SaveStatus = "saved" | "save_failed";
 
@@ -163,6 +169,7 @@ export async function generateAckDecision(
     .replace("{{SAVE_STATUS}}", saveStatus)
     .replace("{{MESSAGES}}", block)
     .replace("{{LATEST_USER_MESSAGE}}", freshMessageText);
+  logger.info("ack reply", { model: sarvam ? "sarvam-m" : "groq" });
   const reply = await llm.complete({
     prompt,
     maxTokens: 200,
