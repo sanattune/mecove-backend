@@ -17,33 +17,17 @@ function getWhatsAppEnv(): { phoneId: string; token: string } {
 }
 
 /**
- * Sends a WhatsApp reply message. If messageId is provided, sends as a contextual reply
- * (threaded reply to the original message).
+ * Sends a plain WhatsApp text reply.
  */
-export async function sendWhatsAppReply(
-  toDigits: string,
-  body: string,
-  messageId?: string
-): Promise<void> {
+export async function sendWhatsAppReply(toDigits: string, body: string): Promise<void> {
   const { phoneId, token } = getWhatsAppEnv();
   const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
-  const payload: {
-    messaging_product: string;
-    to: string;
-    type: string;
-    text: { body: string };
-    context?: { message_id: string };
-  } = {
+  const payload = {
     messaging_product: "whatsapp",
     to: toDigits,
     type: "text",
     text: { body },
   };
-  // Add context for threaded reply if messageId is provided
-  if (messageId) {
-    payload.context = { message_id: messageId };
-    logger.info("sending contextual reply", { messageId, toDigits });
-  }
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -58,13 +42,49 @@ export async function sendWhatsAppReply(
       logger.error("WhatsApp API error", { status: response.status, error: errorText, payload });
       throw new Error(`WhatsApp API error: ${response.status} ${errorText}`);
     }
-    // Log successful contextual reply
-    if (messageId) {
-      logger.info("contextual reply sent successfully", { messageId, toDigits });
-    }
   } catch (err) {
     logger.error("WhatsApp reply error:", err);
     throw err;
+  }
+}
+
+/**
+ * Sends a native typing indicator for a received WhatsApp message.
+ * This is best-effort and callers should handle failures without interrupting reply flow.
+ */
+export async function sendWhatsAppTypingIndicator(
+  toDigits: string,
+  sourceMessageId: string
+): Promise<void> {
+  const { phoneId, token } = getWhatsAppEnv();
+  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
+  const payload = {
+    messaging_product: "whatsapp",
+    status: "read",
+    message_id: sourceMessageId,
+    typing_indicator: {
+      type: "text",
+    },
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.warn("WhatsApp typing indicator failed", {
+      toDigits,
+      sourceMessageId,
+      status: response.status,
+      error: errorText,
+    });
+    throw new Error(`WhatsApp typing indicator error: ${response.status} ${errorText}`);
   }
 }
 

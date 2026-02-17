@@ -17,9 +17,9 @@ A Node.js backend service for meCove, handling WhatsApp webhooks, message proces
    - API validates and processes the message
    - Creates/finds User and Identity for the sender
    - Stores Message in database
-   - Enqueues a `generateSummary` job
-   - Generates AI acknowledgment reply
-   - Sends reply back to WhatsApp
+   - For normal text: appends to a Redis reply batch and waits for inactivity
+   - Worker generates one combined acknowledgment reply for the batch
+   - Optionally enqueues a `generateSummary` job based on LLM intent
 
 2. **Summary Generation**:
    - Worker picks up `generateSummary` job from Redis queue
@@ -75,6 +75,13 @@ GROQ_API_KEY=your_groq_api_key
 
 # Consent gate config
 CONSENT_CONFIG_PATH=consent.config.yaml
+
+# Reply batching
+REPLY_BATCH_DEBOUNCE_MS=5000
+REPLY_BATCH_MAX_WAIT_MS=15000
+
+# Optional native WhatsApp typing indicator while composing batch reply
+WHATSAPP_TYPING_INDICATOR_ENABLED=false
 
 # Optional: ngrok for webhook tunneling
 NGROK_AUTHTOKEN=your_ngrok_token
@@ -224,9 +231,9 @@ Handles incoming WhatsApp messages and webhook verification.
 - Processes incoming text messages
 - Creates or finds user and identity for the sender phone number
 - Stores messages in database (upsert by `identityId` + `sourceMessageId`)
-- Automatically enqueues a summary generation job (`generateSummary`)
-- Generates an AI-powered acknowledgment reply using LLM
-- Sends reply back to WhatsApp (if `WHATSAPP_PHONE_NUMBER_ID` and `WHATSAPP_PERMANENT_TOKEN` are configured)
+- For slash commands (`/chatlog`, `/clear`, `/f`): executes immediately when no batch is pending
+- For normal text: batches messages in Redis, waits for inactivity, then sends one combined AI acknowledgment reply
+- Optionally enqueues summary generation (`generateSummary`) when LLM detects summary intent
 
 **Webhook Setup**:
 Use the `sync:webhook` script to automatically configure the webhook with Meta/Facebook:
@@ -505,6 +512,9 @@ If replies aren't being sent:
 | `WHATSAPP_PHONE_NUMBER_ID` | ⚠️ | WhatsApp Phone Number ID (for sending replies) | - |
 | `WHATSAPP_PERMANENT_TOKEN` | ⚠️ | WhatsApp Permanent Access Token (for sending replies) | - |
 | `GROQ_API_KEY` | ⚠️ | Groq API key for LLM (summaries & replies) | - |
+| `REPLY_BATCH_DEBOUNCE_MS` | ❌ | Inactivity debounce before batch flush (ms) | `5000` |
+| `REPLY_BATCH_MAX_WAIT_MS` | ❌ | Max wait before forced batch flush (ms) | `15000` |
+| `WHATSAPP_TYPING_INDICATOR_ENABLED` | ❌ | Enable best-effort native typing indicator | `false` |
 | `PORT` | ❌ | API server port | `3000` |
 | `NGROK_AUTHTOKEN` | ❌ | ngrok auth token (for webhook tunneling) | - |
 | `NGROK_TARGET` | ❌ | ngrok target host (`api:3000` or `host.docker.internal:3000`) | `api:3000` |

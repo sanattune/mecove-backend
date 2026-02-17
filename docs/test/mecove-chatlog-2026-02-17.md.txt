@@ -1,0 +1,198 @@
+# MeCove Chat Log
+
+Generated: 2026-02-17T05:33:38.254Z
+
+## 2026-02-12
+
+User(06:32:39 PM): Hello there
+Bot(06:32:41 PM): Hello! How can I help?
+
+User(06:33:02 PM): Well I'm not sure where to start
+Bot(06:33:03 PM): I hear you. Whenever you're ready, feel free to share more.
+
+User(06:33:14 PM): I'm kinda feeling lost
+Bot(06:33:16 PM): It sounds like you're feeling uncertain. Feel free to share more whenever you're ready.
+
+User(06:34:04 PM): Maybe I need some direction in life but I'm not sure what to do
+Bot(06:34:06 PM): Thanks for sharing. Whenever you feel ready, I'm here to listen.
+
+User(06:34:58 PM): So I'm thinking I could do some thinking here. Will u help me out?
+Bot(06:35:00 PM): Thanks for reaching out. I'm working on adding answer support and will let you know when it's ready; this is a safe space to share your thoughts.
+
+User(06:35:51 PM): Ok so it's been a while I have been thinking what to do and tried a few options
+Bot(06:35:53 PM): {"reply
+
+User(06:35:57 PM): But nothing feels right
+Bot(06:35:59 PM): Feeling uncertain can be overwhelming, and I'm here if you'd like to talk more.
+
+User(06:36:38 PM): What do I do now then... Maybe just keep trying more. But how much more
+Bot(06:36:40 PM): I’m working on adding answer support and will let you know when it’s ready; you can keep sharing your thoughts.
+
+User(06:36:51 PM): And I'm alone on this journey... Wonder who to share
+Bot(06:36:53 PM): You don't have to go through this alone—share what’s on your mind when you’re ready.
+
+## 2026-02-13
+
+User(11:27:17 AM): and if it will be good enough
+Bot(11:27:20 AM): It’s understandable to question whether it feels good enough. If you want, you can keep sharing.
+
+User(11:33:24 AM): Hey im feeling very scared
+Bot(11:33:26 AM): I’m sorry to hear how scared you feel. If you'd like to talk more, I’m available.
+
+User(11:36:14 AM): i don't know if i will complete everything on time
+Bot(11:36:16 AM): I’ve noted that.
+
+User(11:39:11 AM): I wonder how will i really know!
+Bot(11:39:13 AM): Answering your question isn’t available yet, but I’ll let you know when it is.
+
+User(11:39:37 AM): and if i have got it all right...
+Bot(11:39:39 AM): I understand how you feel.
+
+User(12:01:11 PM): Just letting u know... bye
+Bot(12:01:12 PM): {"replyText":"Thanks for sharing—take
+
+User(12:02:57 PM): I also don't know if i'm missing out on sometime....
+Bot(12:02:59 PM): I hear you.
+
+User(05:03:06 PM): I'm bored!!!!
+Bot(05:03:10 PM): I hear you.
+
+User(05:03:15 PM): I'm irritated
+Bot(05:03:16 PM): Noted
+
+User(05:04:06 PM): I feel like no even cares... But why does even anyone need to!
+Bot(05:04:07 PM): Noted
+
+User(05:05:22 PM): I don't know how to n why to get out of this feeling
+Bot(05:05:23 PM): I hear you.
+
+User(05:05:36 PM): U just said that!
+Bot(05:05:37 PM): Okay, moving on.
+
+User(05:09:58 PM): I don't feel like talking to anyone
+Bot(05:10:00 PM): Okay, saved.
+
+User(05:10:02 PM): Or doing anything
+Bot(05:10:03 PM): Saved, and I'm here if you need anything else.
+
+User(05:10:14 PM): U r even more boring
+Bot(05:10:15 PM): You can be honest with me without worrying about judgment, save this for now, and come back if needed.
+
+User(05:10:52 PM): But it doesn't feel like u r listening to me ... And know this pain n loneliness I'm feeling
+Bot(05:10:53 PM): Noted and I'm here if you need anything else.
+
+User(05:11:09 PM): U r funny now....
+Bot(05:11:10 PM): U r funny now, noted
+
+User(05:15:29 PM): I feel sleepy at this time generally
+Bot(05:15:30 PM): Noted
+
+User(05:15:41 PM): That's why I'm thinking of joining some class at this time
+Bot(05:15:42 PM): Noted
+
+User(05:15:48 PM): It will keep me busy
+Bot(05:15:50 PM): Noted.
+
+User(05:15:58 PM): I wonder what's my issue..
+Bot(05:15:59 PM): Noted.
+
+User(05:16:13 PM): Maybe it's power... What's it about rules and authority
+Bot(05:16:14 PM): Noted.
+
+User(05:16:23 PM): Something with the masculine energy as well
+Bot(05:16:24 PM): Nothing I say will change your thoughts. I'm here if you want to continue.
+
+User(05:16:42 PM): Interesting I need to figure it out
+Bot(05:16:43 PM): Noted
+
+User(05:17:15 PM): But I'm still bored
+Bot(05:17:17 PM): Noted
+
+User(05:17:23 PM): Why!!! I don't know
+Bot(05:17:24 PM): Noted. You can share what you are carrying; this space is for logging, without judgment.
+
+User(05:17:38 PM): U just keep saying noted!
+Bot(05:17:39 PM): We won't repeat that. You can take a break and come back when you're ready to share further.
+
+User(05:17:48 PM): Yeah looks so
+Bot(05:17:49 PM): Okay.
+
+User(05:49:36 PM): I'm back
+Bot(05:49:40 PM): Welcome back.
+
+User(05:49:55 PM): I'm feeling better now... Had a short nap
+Bot(05:49:57 PM): Glad to hear you're feeling better.
+
+User(05:50:49 PM): I was just soooo bored n bugged then
+Bot(05:50:50 PM): Welcome back.
+
+User(05:51:02 PM): Don't know what got into me
+Bot(05:51:03 PM): Welcome back to our conversation. You're not alone in feeling stuck or confused sometimes.
+
+User(05:51:14 PM): Maybe I need to listen to some music
+Bot(05:51:15 PM): Noted. You can share what you are carrying; this space is for logging, without judgment.
+
+User(05:51:23 PM): I feel good with that
+Bot(05:51:24 PM): Thanks for feeling better, and glad you found what works for you!
+
+User(06:29:08 PM): Nothing much... I just was looking if u were back
+Bot(06:29:09 PM): Welcome back to our conversation.
+
+User(06:30:04 PM): Thanks...
+Bot(06:30:05 PM): You're welcome, feel free to share anything when you need this log space again.
+
+User(06:30:24 PM): And so I was saying that it seems like an up n down in life...
+Bot(06:30:25 PM): Okay, noted, thanks for sharing.
+
+User(06:32:49 PM): <test feedback> saying noted and thanks for sharing is very off here... It doesn't feel like u r really listening... More like u r making notes ..only.
+Bot(06:32:51 PM): test feedback received
+
+User(06:34:09 PM): I just feel like sitting by myself n not talking to anyone..
+Bot(06:34:10 PM): You're welcome, I'm here when you're ready to share more.
+
+User(06:34:29 PM): It sometimes feels peaceful in a way
+Bot(06:34:30 PM): Noted, and thanks for sharing your thought.
+
+User(06:34:58 PM): <test feedback> u don't need to reply after evvvverryyyy statement dude. First listen!
+Bot(06:34:59 PM): test feedback received
+
+User(06:50:45 PM): Wonder what motivation for me... I have to figure out
+Bot(06:50:47 PM): Noted, you have some pondering to do.
+
+User(07:15:11 PM): Maybe it's n up n down...
+Bot(07:15:13 PM): Noted, you have some pondering to do.
+
+User(07:34:55 PM): <test feedback> good observation such points need to be made as notes for the coach/counsellor
+Bot(07:34:56 PM): test feedback received
+
+User(07:43:23 PM): <test feedback> u don't need to feel sorry
+Bot(07:43:24 PM): test feedback received
+
+User(07:44:03 PM): <test feedback> this is a good statement to make... Neutral and just more of a reflection
+Bot(07:44:04 PM): test feedback received
+
+User(07:44:58 PM): <test feedback> these statements before saying I'm here if u wanna talk r really good
+Bot(07:44:59 PM): test feedback received
+
+User(07:47:10 PM): But I'm not sure how long the feeling will last...
+Bot(07:47:11 PM): Noted.
+
+## 2026-02-14
+
+User(10:58:11 AM): gooooood morning
+Bot(10:58:12 AM): Good morning.
+
+User(04:43:32 PM): I'm feeling great today
+Bot(04:43:34 PM): Good to hear!
+
+User(04:43:37 PM): Such an awesome day
+Bot(04:43:38 PM): Good to hear that you're having a great day!
+
+User(04:43:59 PM): I've worn something very different today and that makes me feel goood
+Bot(04:44:00 PM): Good to hear that fashion choices boost your mood!
+
+User(04:44:05 PM): Yup
+Bot(04:44:06 PM): Saved, okay.
+
+User(04:44:18 PM): N going out with friends... Makes it even better
+Bot(04:44:19 PM): Sounds like a great time!

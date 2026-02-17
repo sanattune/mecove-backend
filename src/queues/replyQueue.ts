@@ -4,14 +4,14 @@ import { getRedis } from "../infra/redis";
 export const REPLY_QUEUE_NAME = "reply";
 export const JOB_NAME_GENERATE_REPLY = "generateReply";
 
+export type ReplyJobMode = "command" | "busy_notice";
+
 export type GenerateReplyPayload = {
   userId: string;
   messageId: string;
-  identityId: string;
-  sourceMessageId: string;
   channelUserKey: string;
   messageText: string;
-  messageTimestamp: number; // Timestamp of when message was created (for counting messages after)
+  mode: ReplyJobMode;
 };
 
 export const replyQueue = new Queue(REPLY_QUEUE_NAME, {

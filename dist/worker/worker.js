@@ -7,7 +7,7 @@ const logger_1 = require("../infra/logger");
 const redis_1 = require("../infra/redis");
 const summaryQueue_1 = require("../queues/summaryQueue");
 const replyQueue_1 = require("../queues/replyQueue");
-const messageTracking_1 = require("../infra/messageTracking");
+const replyBatchQueue_1 = require("../queues/replyBatchQueue");
 const ackReply_1 = require("../llm/ackReply");
 const testFeedback_1 = require("../messages/testFeedback");
 const whatsapp_1 = require("../infra/whatsapp");
@@ -15,6 +15,8 @@ const p0_1 = require("../summary/p0");
 const p1_1 = require("../summary/p1");
 const pipeline_1 = require("../summary/pipeline");
 const redisArtifacts_1 = require("../summary/redisArtifacts");
+const config_1 = require("../replyBatch/config");
+const state_1 = require("../replyBatch/state");
 // Fail fast on startup
 if (!process.env.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required. Set it in .env");
@@ -29,6 +31,7 @@ const SUMMARY_TIMEOUT_TEXT = "Summary generation timed out. Please request again
 const CHATLOG_SENT_TEXT = "I have sent your chat log as an attachment.";
 const CHAT_CLEARED_TEXT = "Your chat history has been cleared.";
 const UNKNOWN_COMMAND_TEXT = "Unknown command. Available: /chatlog, /clear, /f";
+const BUSY_NOTICE_TEXT = "Please wait, I am processing your previous message. Retry command in a moment.";
 function summaryLockKey(userId) {
     return `summary:inflight:${userId}`;
 }
@@ -62,7 +65,7 @@ async function buildAllTimeChatlogMarkdown(userId) {
         if (!userText)
             continue;
         if (userText.startsWith("/"))
-            continue; // Exclude slash-command entries from export
+            continue;
         hasAnyMessage = true;
         const dateHeader = m.createdAt.toISOString().slice(0, 10);
         if (dateHeader !== currentDateHeader) {
@@ -81,6 +84,57 @@ async function buildAllTimeChatlogMarkdown(userId) {
         lines.push("");
     }
     return lines.join("\n");
+}
+function evaluateBatchDue(nowMs, startAtMs, lastAtMs) {
+    const quietElapsed = nowMs - lastAtMs;
+    const totalElapsed = nowMs - startAtMs;
+    if (totalElapsed >= config_1.REPLY_BATCH_MAX_WAIT_MS) {
+        return { dueReason: "max_cap", delayMs: 0 };
+    }
+    if (quietElapsed >= config_1.REPLY_BATCH_DEBOUNCE_MS) {
+        return { dueReason: "quiet", delayMs: 0 };
+    }
+    const quietRemaining = config_1.REPLY_BATCH_DEBOUNCE_MS - quietElapsed;
+    const capRemaining = config_1.REPLY_BATCH_MAX_WAIT_MS - totalElapsed;
+    return {
+        dueReason: null,
+        delayMs: Math.max(1, Math.min(quietRemaining, capRemaining)),
+    };
+}
+async function enqueueBatchFlush(userId, seq, delayMs) {
+    await replyBatchQueue_1.replyBatchQueue.add(replyBatchQueue_1.JOB_NAME_FLUSH_REPLY_BATCH, { userId, seq }, { delay: Math.max(1, Math.floor(delayMs)) });
+}
+async function applySummaryIntent(userId, messageId, channelUserKey, shouldGenerateSummary, defaultReplyText) {
+    if (!shouldGenerateSummary)
+        return defaultReplyText;
+    const redis = (0, redis_1.getRedis)();
+    const lockKey = summaryLockKey(userId);
+    const lockValue = JSON.stringify({ messageId, createdAt: new Date().toISOString() });
+    const acquired = await redis.set(lockKey, lockValue, "EX", SUMMARY_LOCK_TTL_SECONDS, "NX");
+    if (!acquired) {
+        return SUMMARY_ALREADY_RUNNING_TEXT;
+    }
+    try {
+        await summaryQueue_1.summaryQueue.add(summaryQueue_1.JOB_NAME_GENERATE_SUMMARY, {
+            userId,
+            channelUserKey,
+            range: "last_15_days",
+        });
+        logger_1.logger.info("summary generation requested by user intent", {
+            userId,
+            messageId,
+        });
+        return SUMMARY_REQUEST_ACCEPTED_TEXT;
+    }
+    catch (err) {
+        await redis.del(lockKey);
+        logger_1.logger.error("failed to enqueue summary generation", {
+            userId,
+            messageId,
+            error: err instanceof Error ? err.message : String(err),
+        });
+        return defaultReplyText;
+    }
 }
 // Summary worker
 const summaryWorker = new bullmq_1.Worker(summaryQueue_1.SUMMARY_QUEUE_NAME, async (job) => {
@@ -224,149 +278,210 @@ const summaryWorker = new bullmq_1.Worker(summaryQueue_1.SUMMARY_QUEUE_NAME, asy
         await redis.del(lockKey);
     }
 }, { connection: (0, redis_1.getRedis)() });
-// Reply worker
+// Command and busy-notice worker
 const replyWorker = new bullmq_1.Worker(replyQueue_1.REPLY_QUEUE_NAME, async (job) => {
     if (job.name !== replyQueue_1.JOB_NAME_GENERATE_REPLY) {
         logger_1.logger.warn("reply job ignored: wrong job name", { jobName: job.name });
         return;
     }
-    const { userId, messageId, identityId, sourceMessageId, channelUserKey, messageText, messageTimestamp, } = job.data;
-    const command = parseCommand(messageText);
-    if (command) {
-        let replyText = CHATLOG_SENT_TEXT;
-        if (command === "/chatlog") {
-            const chatlog = await buildAllTimeChatlogMarkdown(userId);
-            const filename = `mecove-chatlog-${new Date().toISOString().slice(0, 10)}.md`;
-            await (0, whatsapp_1.sendWhatsAppBufferDocument)(channelUserKey, Buffer.from(chatlog, "utf8"), filename, "text/plain", "Your chat log is ready.");
-        }
-        else if (command === "/clear") {
-            await prisma_1.prisma.$transaction([
-                prisma_1.prisma.summary.deleteMany({ where: { userId } }),
-                prisma_1.prisma.message.deleteMany({ where: { userId } }),
-            ]);
-            await (0, redis_1.getRedis)().del(`messages:${userId}`, summaryLockKey(userId));
-            await (0, redisArtifacts_1.clearSummaryArtifactsForUser)(userId);
-            replyText = CHAT_CLEARED_TEXT;
-        }
-        else if (command === testFeedback_1.TEST_FEEDBACK_COMMAND) {
-            replyText = testFeedback_1.TEST_FEEDBACK_SUCCESS_REPLY;
-        }
-        else {
-            replyText = UNKNOWN_COMMAND_TEXT;
-        }
-        const messagesAfterCount = await (0, messageTracking_1.countMessagesAfter)(userId, messageTimestamp);
-        const shouldSendContextual = messagesAfterCount > 1 || Date.now() - messageTimestamp > 10_000;
-        const contextualMessageId = shouldSendContextual ? sourceMessageId : undefined;
-        await (0, whatsapp_1.sendWhatsAppReply)(channelUserKey, replyText, contextualMessageId);
-        if (command !== "/clear") {
-            await prisma_1.prisma.message.update({
-                where: { id: messageId },
-                data: {
-                    repliedAt: new Date(),
-                    replyText,
-                },
-            });
-        }
+    const { userId, messageId, channelUserKey, messageText, mode } = job.data;
+    if (mode === "busy_notice") {
+        await (0, whatsapp_1.sendWhatsAppReply)(channelUserKey, BUSY_NOTICE_TEXT);
+        await prisma_1.prisma.message.update({
+            where: { id: messageId },
+            data: {
+                repliedAt: new Date(),
+                replyText: BUSY_NOTICE_TEXT,
+            },
+        });
         return;
     }
-    // Generate reply using LLM
-    let replyText = "Noted.";
-    let shouldGenerateSummary = false;
-    try {
-        const decision = await (0, ackReply_1.generateAckDecision)(userId, messageText);
-        if (decision.replyText.trim().length > 0) {
-            replyText = decision.replyText.trim();
-        }
-        shouldGenerateSummary = decision.shouldGenerateSummary;
+    const command = parseCommand(messageText);
+    if (!command) {
+        logger_1.logger.warn("reply command job ignored: missing slash command", { messageId, userId });
+        return;
     }
-    catch (err) {
-        logger_1.logger.warn("LLM reply generation failed, using fallback", err);
+    let replyText = CHATLOG_SENT_TEXT;
+    if (command === "/chatlog") {
+        const chatlog = await buildAllTimeChatlogMarkdown(userId);
+        const filename = `mecove-chatlog-${new Date().toISOString().slice(0, 10)}.md`;
+        await (0, whatsapp_1.sendWhatsAppBufferDocument)(channelUserKey, Buffer.from(chatlog, "utf8"), filename, "text/plain", "Your chat log is ready.");
     }
-    if (shouldGenerateSummary) {
-        const redis = (0, redis_1.getRedis)();
-        const lockKey = summaryLockKey(userId);
-        const lockValue = JSON.stringify({ messageId, createdAt: new Date().toISOString() });
-        const acquired = await redis.set(lockKey, lockValue, "EX", SUMMARY_LOCK_TTL_SECONDS, "NX");
-        if (acquired) {
-            replyText = SUMMARY_REQUEST_ACCEPTED_TEXT;
-            try {
-                await summaryQueue_1.summaryQueue.add(summaryQueue_1.JOB_NAME_GENERATE_SUMMARY, {
-                    userId,
-                    channelUserKey,
-                    range: "last_15_days",
-                });
-                logger_1.logger.info("summary generation requested by user intent", {
-                    userId,
-                    messageId,
-                });
-            }
-            catch (err) {
-                await redis.del(lockKey);
-                logger_1.logger.error("failed to enqueue summary generation", {
-                    userId,
-                    messageId,
-                    error: err instanceof Error ? err.message : String(err),
-                });
-            }
-        }
-        else {
-            replyText = SUMMARY_ALREADY_RUNNING_TEXT;
-        }
+    else if (command === "/clear") {
+        await prisma_1.prisma.$transaction([
+            prisma_1.prisma.summary.deleteMany({ where: { userId } }),
+            prisma_1.prisma.message.deleteMany({ where: { userId } }),
+        ]);
+        await (0, redis_1.getRedis)().del(summaryLockKey(userId));
+        await (0, state_1.clearReplyBatchState)(userId);
+        await (0, redisArtifacts_1.clearSummaryArtifactsForUser)(userId);
+        replyText = CHAT_CLEARED_TEXT;
     }
-    // Check how many messages came after this message
-    const messagesAfterCount = await (0, messageTracking_1.countMessagesAfter)(userId, messageTimestamp);
-    // Check time elapsed since message was received
-    const currentTime = Date.now();
-    const timeSinceMessage = currentTime - messageTimestamp;
-    const STALE_THRESHOLD_MS = 10000; // 10 seconds
-    // Send contextual reply if:
-    // 1. There are more than 1 message after (threshold: > 1), OR
-    // 2. The response is being sent more than 10 seconds after the message was received
-    const shouldSendContextual = messagesAfterCount > 1 || timeSinceMessage > STALE_THRESHOLD_MS;
-    // Essential log: reply decision and context
-    logger_1.logger.info("reply decision", {
-        messageId,
-        contextual: shouldSendContextual,
-        messagesAfter: messagesAfterCount,
-        timeSinceMessageMs: timeSinceMessage,
-        isStale: timeSinceMessage > STALE_THRESHOLD_MS,
-        threshold: 1,
-    });
-    // Send reply (contextual if there are more than 1 message after this one)
-    const contextualMessageId = shouldSendContextual ? sourceMessageId : undefined;
-    if (shouldSendContextual) {
-        logger_1.logger.info("sending as contextual reply", { messageId, sourceMessageId, messagesAfter: messagesAfterCount });
+    else if (command === testFeedback_1.TEST_FEEDBACK_COMMAND) {
+        replyText = testFeedback_1.TEST_FEEDBACK_SUCCESS_REPLY;
     }
-    try {
-        await (0, whatsapp_1.sendWhatsAppReply)(channelUserKey, replyText, contextualMessageId);
+    else {
+        replyText = UNKNOWN_COMMAND_TEXT;
     }
-    catch (err) {
-        logger_1.logger.error("failed to send WhatsApp reply", err);
-        throw err; // Re-throw to trigger retry
+    await (0, whatsapp_1.sendWhatsAppReply)(channelUserKey, replyText);
+    if (command !== "/clear") {
+        await prisma_1.prisma.message.update({
+            where: { id: messageId },
+            data: {
+                repliedAt: new Date(),
+                replyText,
+            },
+        });
     }
-    // Update database: mark as replied and store reply text
-    await prisma_1.prisma.message.update({
-        where: { id: messageId },
-        data: {
-            repliedAt: new Date(),
-            replyText,
-        },
-    });
-    // Essential log: reply decision and context
-    logger_1.logger.info("reply sent", {
-        messageId,
-        contextual: shouldSendContextual,
-        messagesAfter: messagesAfterCount,
-    });
 }, {
     connection: (0, redis_1.getRedis)(),
     concurrency: 5,
 });
-// Add error handlers
+// Debounced batch flush worker
+const replyBatchWorker = new bullmq_1.Worker(replyBatchQueue_1.REPLY_BATCH_QUEUE_NAME, async (job) => {
+    if (job.name !== replyBatchQueue_1.JOB_NAME_FLUSH_REPLY_BATCH) {
+        logger_1.logger.warn("reply batch job ignored: wrong job name", { jobName: job.name });
+        return;
+    }
+    const { userId, seq: jobSeq } = job.data;
+    const timing = await (0, state_1.getBatchTiming)(userId);
+    if (!timing)
+        return;
+    const nowMs = Date.now();
+    const due = evaluateBatchDue(nowMs, timing.startAtMs, timing.lastAtMs);
+    if (!due.dueReason) {
+        await enqueueBatchFlush(userId, timing.seq, due.delayMs);
+        return;
+    }
+    const lockToken = await (0, state_1.acquireReplyBatchFlushLock)(userId);
+    if (!lockToken) {
+        return;
+    }
+    const lockedTiming = await (0, state_1.getBatchTiming)(userId);
+    if (!lockedTiming) {
+        await (0, state_1.releaseReplyBatchFlushLock)(userId, lockToken);
+        return;
+    }
+    const lockedDue = evaluateBatchDue(Date.now(), lockedTiming.startAtMs, lockedTiming.lastAtMs);
+    if (!lockedDue.dueReason) {
+        await enqueueBatchFlush(userId, lockedTiming.seq, lockedDue.delayMs);
+        await (0, state_1.releaseReplyBatchFlushLock)(userId, lockToken);
+        return;
+    }
+    let claimedBatch = null;
+    let replySent = false;
+    try {
+        claimedBatch = await (0, state_1.claimBatchAtomically)(userId);
+        if (!claimedBatch)
+            return;
+        const messages = await prisma_1.prisma.message.findMany({
+            where: {
+                userId,
+                id: { in: claimedBatch.ids },
+            },
+            orderBy: { createdAt: "asc" },
+            select: {
+                id: true,
+                text: true,
+            },
+        });
+        if (messages.length === 0)
+            return;
+        const combinedText = messages
+            .map((m) => (m.text ?? "").trim())
+            .filter((text) => text.length > 0 && !text.startsWith("/"))
+            .join("\n");
+        if (combinedText.length === 0)
+            return;
+        if (config_1.WHATSAPP_TYPING_INDICATOR_ENABLED) {
+            try {
+                await (0, whatsapp_1.sendWhatsAppTypingIndicator)(claimedBatch.meta.channelUserKey, claimedBatch.meta.latestSourceMessageId);
+            }
+            catch (err) {
+                logger_1.logger.warn("typing indicator call failed; continuing without indicator", {
+                    userId,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        }
+        let replyText = "Got it.";
+        let shouldGenerateSummary = false;
+        try {
+            const decision = await (0, ackReply_1.generateAckDecision)(userId, combinedText);
+            if (decision.replyText.trim().length > 0) {
+                replyText = decision.replyText.trim();
+            }
+            shouldGenerateSummary = decision.shouldGenerateSummary;
+        }
+        catch (err) {
+            logger_1.logger.warn("LLM batch reply generation failed, using fallback", err);
+        }
+        replyText = await applySummaryIntent(userId, claimedBatch.meta.latestMessageId, claimedBatch.meta.channelUserKey, shouldGenerateSummary, replyText);
+        await (0, whatsapp_1.sendWhatsAppReply)(claimedBatch.meta.channelUserKey, replyText);
+        replySent = true;
+        const latestMessageId = messages.some((m) => m.id === claimedBatch?.meta.latestMessageId)
+            ? claimedBatch.meta.latestMessageId
+            : messages[messages.length - 1]?.id;
+        if (latestMessageId) {
+            try {
+                await prisma_1.prisma.message.update({
+                    where: { id: latestMessageId },
+                    data: {
+                        repliedAt: new Date(),
+                        replyText,
+                    },
+                });
+            }
+            catch (err) {
+                logger_1.logger.error("failed to persist latest batch message reply metadata", {
+                    userId,
+                    latestMessageId,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        }
+        logger_1.logger.info("reply batch flushed", {
+            userId,
+            batchCount: claimedBatch.ids.length,
+            dueReason: lockedDue.dueReason,
+            waitMs: nowMs - claimedBatch.meta.startAtMs,
+            jobSeq,
+            currentSeq: lockedTiming.seq,
+        });
+    }
+    catch (err) {
+        if (claimedBatch && !replySent) {
+            try {
+                await (0, state_1.restoreClaimedBatch)(userId, claimedBatch);
+                await enqueueBatchFlush(userId, claimedBatch.meta.seq, config_1.REPLY_BATCH_DEBOUNCE_MS);
+            }
+            catch (restoreErr) {
+                logger_1.logger.error("failed to restore claimed batch after processing error", {
+                    userId,
+                    error: restoreErr instanceof Error ? restoreErr.message : String(restoreErr),
+                });
+            }
+        }
+        throw err;
+    }
+    finally {
+        await (0, state_1.releaseReplyBatchFlushLock)(userId, lockToken);
+    }
+}, {
+    connection: (0, redis_1.getRedis)(),
+    concurrency: 5,
+});
 replyWorker.on("failed", (job, err) => {
     logger_1.logger.error("reply job failed", {
         jobId: job?.id,
         error: err.message,
+    });
+});
+replyBatchWorker.on("failed", (job, err) => {
+    logger_1.logger.error("reply batch job failed", {
+        jobId: job?.id,
+        error: err.message,
+        userId: job?.data?.userId,
     });
 });
 summaryWorker.on("failed", (job, err) => {
@@ -389,10 +504,10 @@ summaryWorker.on("failed", (job, err) => {
     });
 });
 async function shutdown() {
-    await Promise.all([summaryWorker.close(), replyWorker.close()]);
+    await Promise.all([summaryWorker.close(), replyWorker.close(), replyBatchWorker.close()]);
     await prisma_1.prisma.$disconnect();
     process.exit(0);
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
-logger_1.logger.info("worker started (summary + reply queues)");
+logger_1.logger.info("worker started (summary + reply + reply_batch queues)");

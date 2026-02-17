@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendWhatsAppReply = sendWhatsAppReply;
+exports.sendWhatsAppTypingIndicator = sendWhatsAppTypingIndicator;
 exports.sendWhatsAppButtons = sendWhatsAppButtons;
 exports.sendWhatsAppDocument = sendWhatsAppDocument;
 exports.sendWhatsAppBufferDocument = sendWhatsAppBufferDocument;
@@ -20,10 +21,9 @@ function getWhatsAppEnv() {
     return { phoneId, token };
 }
 /**
- * Sends a WhatsApp reply message. If messageId is provided, sends as a contextual reply
- * (threaded reply to the original message).
+ * Sends a plain WhatsApp text reply.
  */
-async function sendWhatsAppReply(toDigits, body, messageId) {
+async function sendWhatsAppReply(toDigits, body) {
     const { phoneId, token } = getWhatsAppEnv();
     const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
     const payload = {
@@ -32,11 +32,6 @@ async function sendWhatsAppReply(toDigits, body, messageId) {
         type: "text",
         text: { body },
     };
-    // Add context for threaded reply if messageId is provided
-    if (messageId) {
-        payload.context = { message_id: messageId };
-        logger_1.logger.info("sending contextual reply", { messageId, toDigits });
-    }
     try {
         const response = await fetch(url, {
             method: "POST",
@@ -51,14 +46,44 @@ async function sendWhatsAppReply(toDigits, body, messageId) {
             logger_1.logger.error("WhatsApp API error", { status: response.status, error: errorText, payload });
             throw new Error(`WhatsApp API error: ${response.status} ${errorText}`);
         }
-        // Log successful contextual reply
-        if (messageId) {
-            logger_1.logger.info("contextual reply sent successfully", { messageId, toDigits });
-        }
     }
     catch (err) {
         logger_1.logger.error("WhatsApp reply error:", err);
         throw err;
+    }
+}
+/**
+ * Sends a native typing indicator for a received WhatsApp message.
+ * This is best-effort and callers should handle failures without interrupting reply flow.
+ */
+async function sendWhatsAppTypingIndicator(toDigits, sourceMessageId) {
+    const { phoneId, token } = getWhatsAppEnv();
+    const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
+    const payload = {
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: sourceMessageId,
+        typing_indicator: {
+            type: "text",
+        },
+    };
+    const response = await fetch(url, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        logger_1.logger.warn("WhatsApp typing indicator failed", {
+            toDigits,
+            sourceMessageId,
+            status: response.status,
+            error: errorText,
+        });
+        throw new Error(`WhatsApp typing indicator error: ${response.status} ${errorText}`);
     }
 }
 async function sendWhatsAppButtons(toDigits, body, buttons) {

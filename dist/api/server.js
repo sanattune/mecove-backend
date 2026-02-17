@@ -8,12 +8,14 @@ const node_http_1 = __importDefault(require("node:http"));
 const config_1 = require("../consent/config");
 const state_1 = require("../consent/state");
 const logger_1 = require("../infra/logger");
-const messageTracking_1 = require("../infra/messageTracking");
 const prisma_1 = require("../infra/prisma");
 const whatsapp_1 = require("../infra/whatsapp");
 const testFeedback_1 = require("../messages/testFeedback");
 const replyQueue_1 = require("../queues/replyQueue");
+const replyBatchQueue_1 = require("../queues/replyBatchQueue");
 const summaryQueue_1 = require("../queues/summaryQueue");
+const config_2 = require("../replyBatch/config");
+const state_2 = require("../replyBatch/state");
 // Fail fast on startup
 if (!process.env.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required. Set it in .env");
@@ -51,6 +53,12 @@ function normalizeChannelUserKey(raw) {
 }
 function getInboundMessage(body) {
     return body.entry?.[0]?.changes?.[0]?.value?.messages?.[0] ?? null;
+}
+function parseCommand(messageText) {
+    const trimmed = messageText.trim();
+    if (!trimmed.startsWith("/"))
+        return null;
+    return trimmed.split(/\s+/)[0].toLowerCase();
 }
 function buildConsentPromptBody(step, preface) {
     const section = config_1.consentConfig[step];
@@ -164,15 +172,16 @@ const server = node_http_1.default.createServer(async (req, res) => {
                 sendJSON(res, 200, { ok: true });
                 return;
             }
+            const command = parseCommand(textBody);
+            const pendingBatch = command ? await (0, state_2.hasPendingBatch)(user.id) : false;
             const feedbackCommand = (0, testFeedback_1.parseTestFeedbackCommand)(textBody);
-            if (feedbackCommand.isCommand && feedbackCommand.feedback === null) {
-                await (0, whatsapp_1.sendWhatsAppReply)(toDigits, testFeedback_1.TEST_FEEDBACK_MISSING_REPLY, messageId);
+            if (!pendingBatch && feedbackCommand.isCommand && feedbackCommand.feedback === null) {
+                await (0, whatsapp_1.sendWhatsAppReply)(toDigits, testFeedback_1.TEST_FEEDBACK_MISSING_REPLY);
                 sendJSON(res, 200, { ok: true });
                 return;
             }
             const clientTimestamp = new Date(Number(timestamp) * 1000);
-            const serverTimestamp = Date.now();
-            const storedText = feedbackCommand.isCommand && feedbackCommand.feedback
+            const storedText = !pendingBatch && feedbackCommand.isCommand && feedbackCommand.feedback
                 ? (0, testFeedback_1.toStoredTestFeedback)(feedbackCommand.feedback)
                 : textBody;
             const message = await prisma_1.prisma.message.upsert({
@@ -193,15 +202,34 @@ const server = node_http_1.default.createServer(async (req, res) => {
                     rawPayload: inbound,
                 },
             });
-            await (0, messageTracking_1.addMessageTracking)(user.id, message.id, serverTimestamp);
-            await replyQueue_1.replyQueue.add(replyQueue_1.JOB_NAME_GENERATE_REPLY, {
+            if (command) {
+                const mode = pendingBatch ? "busy_notice" : "command";
+                await replyQueue_1.replyQueue.add(replyQueue_1.JOB_NAME_GENERATE_REPLY, {
+                    userId: user.id,
+                    messageId: message.id,
+                    channelUserKey: toDigits,
+                    messageText: textBody,
+                    mode,
+                });
+                sendJSON(res, 200, { ok: true });
+                return;
+            }
+            const { seq } = await (0, state_2.appendMessageToBatch)({
                 userId: user.id,
                 messageId: message.id,
-                identityId: identity.id,
-                sourceMessageId: messageId,
                 channelUserKey: toDigits,
-                messageText: textBody,
-                messageTimestamp: serverTimestamp,
+                sourceMessageId: messageId,
+            });
+            await replyBatchQueue_1.replyBatchQueue.add(replyBatchQueue_1.JOB_NAME_FLUSH_REPLY_BATCH, {
+                userId: user.id,
+                seq,
+            }, {
+                delay: config_2.REPLY_BATCH_DEBOUNCE_MS,
+            });
+            logger_1.logger.info("reply batch scheduled", {
+                userId: user.id,
+                messageId: message.id,
+                seq,
             });
             sendJSON(res, 200, { ok: true });
         }

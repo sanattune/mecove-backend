@@ -8,7 +8,6 @@ import {
   parseConsentAction,
 } from "../consent/state";
 import { logger } from "../infra/logger";
-import { addMessageTracking } from "../infra/messageTracking";
 import { prisma } from "../infra/prisma";
 import { sendWhatsAppButtons, sendWhatsAppReply } from "../infra/whatsapp";
 import {
@@ -17,11 +16,14 @@ import {
   toStoredTestFeedback,
 } from "../messages/testFeedback";
 import { JOB_NAME_GENERATE_REPLY, replyQueue } from "../queues/replyQueue";
+import { JOB_NAME_FLUSH_REPLY_BATCH, replyBatchQueue } from "../queues/replyBatchQueue";
 import {
   JOB_NAME_GENERATE_SUMMARY,
   summaryQueue,
   type GenerateSummaryPayload,
 } from "../queues/summaryQueue";
+import { REPLY_BATCH_DEBOUNCE_MS } from "../replyBatch/config";
+import { appendMessageToBatch, hasPendingBatch } from "../replyBatch/state";
 
 type WhatsAppMessageNode = {
   from?: string;
@@ -90,6 +92,12 @@ function normalizeChannelUserKey(raw: string): string {
 
 function getInboundMessage(body: WhatsAppWebhookPayload): WhatsAppMessageNode | null {
   return body.entry?.[0]?.changes?.[0]?.value?.messages?.[0] ?? null;
+}
+
+function parseCommand(messageText: string): string | null {
+  const trimmed = messageText.trim();
+  if (!trimmed.startsWith("/")) return null;
+  return trimmed.split(/\s+/)[0].toLowerCase();
 }
 
 function buildConsentPromptBody(step: ConsentStep, preface?: string): string {
@@ -221,17 +229,18 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      const command = parseCommand(textBody);
+      const pendingBatch = command ? await hasPendingBatch(user.id) : false;
       const feedbackCommand = parseTestFeedbackCommand(textBody);
-      if (feedbackCommand.isCommand && feedbackCommand.feedback === null) {
-        await sendWhatsAppReply(toDigits, TEST_FEEDBACK_MISSING_REPLY, messageId);
+      if (!pendingBatch && feedbackCommand.isCommand && feedbackCommand.feedback === null) {
+        await sendWhatsAppReply(toDigits, TEST_FEEDBACK_MISSING_REPLY);
         sendJSON(res, 200, { ok: true });
         return;
       }
 
       const clientTimestamp = new Date(Number(timestamp) * 1000);
-      const serverTimestamp = Date.now();
       const storedText =
-        feedbackCommand.isCommand && feedbackCommand.feedback
+        !pendingBatch && feedbackCommand.isCommand && feedbackCommand.feedback
           ? toStoredTestFeedback(feedbackCommand.feedback)
           : textBody;
 
@@ -254,16 +263,40 @@ const server = http.createServer(async (req, res) => {
         },
       });
 
-      await addMessageTracking(user.id, message.id, serverTimestamp);
+      if (command) {
+        const mode = pendingBatch ? "busy_notice" : "command";
+        await replyQueue.add(JOB_NAME_GENERATE_REPLY, {
+          userId: user.id,
+          messageId: message.id,
+          channelUserKey: toDigits,
+          messageText: textBody,
+          mode,
+        });
+        sendJSON(res, 200, { ok: true });
+        return;
+      }
 
-      await replyQueue.add(JOB_NAME_GENERATE_REPLY, {
+      const { seq } = await appendMessageToBatch({
         userId: user.id,
         messageId: message.id,
-        identityId: identity.id,
-        sourceMessageId: messageId,
         channelUserKey: toDigits,
-        messageText: textBody,
-        messageTimestamp: serverTimestamp,
+        sourceMessageId: messageId,
+      });
+      await replyBatchQueue.add(
+        JOB_NAME_FLUSH_REPLY_BATCH,
+        {
+          userId: user.id,
+          seq,
+        },
+        {
+          delay: REPLY_BATCH_DEBOUNCE_MS,
+        }
+      );
+
+      logger.info("reply batch scheduled", {
+        userId: user.id,
+        messageId: message.id,
+        seq,
       });
 
       sendJSON(res, 200, { ok: true });
