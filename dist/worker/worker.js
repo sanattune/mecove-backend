@@ -85,9 +85,12 @@ async function buildAllTimeChatlogMarkdown(userId) {
     }
     return lines.join("\n");
 }
-function evaluateBatchDue(nowMs, startAtMs, lastAtMs) {
+function evaluateBatchDue(nowMs, startAtMs, lastAtMs, batchSize) {
     const quietElapsed = nowMs - lastAtMs;
     const totalElapsed = nowMs - startAtMs;
+    if (batchSize >= 3) {
+        return { dueReason: "max_cap", delayMs: 0 };
+    }
     if (totalElapsed >= config_1.REPLY_BATCH_MAX_WAIT_MS) {
         return { dueReason: "max_cap", delayMs: 0 };
     }
@@ -348,7 +351,7 @@ const replyBatchWorker = new bullmq_1.Worker(replyBatchQueue_1.REPLY_BATCH_QUEUE
     if (!timing)
         return;
     const nowMs = Date.now();
-    const due = evaluateBatchDue(nowMs, timing.startAtMs, timing.lastAtMs);
+    const due = evaluateBatchDue(nowMs, timing.startAtMs, timing.lastAtMs, timing.count);
     if (!due.dueReason) {
         await enqueueBatchFlush(userId, timing.seq, due.delayMs);
         return;
@@ -362,7 +365,7 @@ const replyBatchWorker = new bullmq_1.Worker(replyBatchQueue_1.REPLY_BATCH_QUEUE
         await (0, state_1.releaseReplyBatchFlushLock)(userId, lockToken);
         return;
     }
-    const lockedDue = evaluateBatchDue(Date.now(), lockedTiming.startAtMs, lockedTiming.lastAtMs);
+    const lockedDue = evaluateBatchDue(Date.now(), lockedTiming.startAtMs, lockedTiming.lastAtMs, lockedTiming.count);
     if (!lockedDue.dueReason) {
         await enqueueBatchFlush(userId, lockedTiming.seq, lockedDue.delayMs);
         await (0, state_1.releaseReplyBatchFlushLock)(userId, lockToken);

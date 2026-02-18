@@ -39,6 +39,10 @@ export type ReplyBatchTiming = {
   seq: number;
 };
 
+export type ReplyBatchStatus = ReplyBatchTiming & {
+  count: number;
+};
+
 export type ReplyBatchMeta = ReplyBatchTiming & {
   channelUserKey: string;
   latestMessageId: string;
@@ -83,7 +87,7 @@ export async function appendMessageToBatch(input: {
   channelUserKey: string;
   sourceMessageId: string;
   nowMs?: number;
-}): Promise<{ seq: number }> {
+}): Promise<{ seq: number; count: number }> {
   const redis = getRedis();
   const nowMs = input.nowMs ?? Date.now();
   const { metaKey, idsKey } = batchKeys(input.userId);
@@ -108,7 +112,17 @@ export async function appendMessageToBatch(input: {
     .pexpire(idsKey, BATCH_STATE_TTL_MS)
     .exec();
 
-  return { seq: Number(seq) };
+  const count = await redis.llen(idsKey); // Re-fetch length or trust the push return? push returns new length. Let's use push return if possible, but exec returns array.
+  // simpler to just call llen or use the result of rpush if we parse it.
+  // But existing code uses multi/exec.
+  // Let's just do another call to be safe and simple, or parse exec result.
+  // The exec result for rpush is at index 4 (0-based) in current chain: hincrby is outside multi.
+  // sequence: hsetnx, hset, rpush, pexpire, pexpire.
+  // rpush is index 2.
+  // Let's use llen for clarity.
+  const finalCount = await redis.llen(idsKey);
+
+  return { seq: Number(seq), count: finalCount };
 }
 
 export async function hasPendingBatch(userId: string): Promise<boolean> {
@@ -118,7 +132,7 @@ export async function hasPendingBatch(userId: string): Promise<boolean> {
   return count > 0;
 }
 
-export async function getBatchTiming(userId: string): Promise<ReplyBatchTiming | null> {
+export async function getBatchTiming(userId: string): Promise<ReplyBatchStatus | null> {
   const redis = getRedis();
   const { metaKey, idsKey } = batchKeys(userId);
   const idCount = await redis.llen(idsKey);
@@ -131,6 +145,7 @@ export async function getBatchTiming(userId: string): Promise<ReplyBatchTiming |
     startAtMs: meta.startAtMs,
     lastAtMs: meta.lastAtMs,
     seq: meta.seq,
+    count: idCount,
   };
 }
 

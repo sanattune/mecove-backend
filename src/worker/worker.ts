@@ -134,13 +134,21 @@ async function buildAllTimeChatlogMarkdown(userId: string): Promise<string> {
   return lines.join("\n");
 }
 
-function evaluateBatchDue(nowMs: number, startAtMs: number, lastAtMs: number): {
+function evaluateBatchDue(
+  nowMs: number,
+  startAtMs: number,
+  lastAtMs: number,
+  batchSize: number
+): {
   dueReason: BatchDueReason | null;
   delayMs: number;
 } {
   const quietElapsed = nowMs - lastAtMs;
   const totalElapsed = nowMs - startAtMs;
 
+  if (batchSize >= 3) {
+    return { dueReason: "max_cap", delayMs: 0 };
+  }
   if (totalElapsed >= REPLY_BATCH_MAX_WAIT_MS) {
     return { dueReason: "max_cap", delayMs: 0 };
   }
@@ -442,7 +450,7 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
     if (!timing) return;
 
     const nowMs = Date.now();
-    const due = evaluateBatchDue(nowMs, timing.startAtMs, timing.lastAtMs);
+    const due = evaluateBatchDue(nowMs, timing.startAtMs, timing.lastAtMs, timing.count);
     if (!due.dueReason) {
       await enqueueBatchFlush(userId, timing.seq, due.delayMs);
       return;
@@ -458,7 +466,12 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
       await releaseReplyBatchFlushLock(userId, lockToken);
       return;
     }
-    const lockedDue = evaluateBatchDue(Date.now(), lockedTiming.startAtMs, lockedTiming.lastAtMs);
+    const lockedDue = evaluateBatchDue(
+      Date.now(),
+      lockedTiming.startAtMs,
+      lockedTiming.lastAtMs,
+      lockedTiming.count
+    );
     if (!lockedDue.dueReason) {
       await enqueueBatchFlush(userId, lockedTiming.seq, lockedDue.delayMs);
       await releaseReplyBatchFlushLock(userId, lockToken);

@@ -71,7 +71,16 @@ async function appendMessageToBatch(input) {
         .pexpire(metaKey, BATCH_STATE_TTL_MS)
         .pexpire(idsKey, BATCH_STATE_TTL_MS)
         .exec();
-    return { seq: Number(seq) };
+    const count = await redis.llen(idsKey); // Re-fetch length or trust the push return? push returns new length. Let's use push return if possible, but exec returns array.
+    // simpler to just call llen or use the result of rpush if we parse it.
+    // But existing code uses multi/exec.
+    // Let's just do another call to be safe and simple, or parse exec result.
+    // The exec result for rpush is at index 4 (0-based) in current chain: hincrby is outside multi.
+    // sequence: hsetnx, hset, rpush, pexpire, pexpire.
+    // rpush is index 2.
+    // Let's use llen for clarity.
+    const finalCount = await redis.llen(idsKey);
+    return { seq: Number(seq), count: finalCount };
 }
 async function hasPendingBatch(userId) {
     const redis = (0, redis_1.getRedis)();
@@ -93,6 +102,7 @@ async function getBatchTiming(userId) {
         startAtMs: meta.startAtMs,
         lastAtMs: meta.lastAtMs,
         seq: meta.seq,
+        count: idCount,
     };
 }
 const CLAIM_BATCH_SCRIPT = `

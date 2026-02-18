@@ -2,8 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WHATSAPP_TYPING_INDICATOR_ENABLED = exports.REPLY_BATCH_MAX_WAIT_MS = exports.REPLY_BATCH_DEBOUNCE_MS = void 0;
 const logger_1 = require("../infra/logger");
-const DEFAULT_REPLY_BATCH_DEBOUNCE_MS = 5_000;
-const DEFAULT_REPLY_BATCH_MAX_WAIT_MS = 15_000;
+const DEFAULT_REPLY_BATCH_DEBOUNCE_MS = 60_000;
+const DEFAULT_REPLY_BATCH_MAX_WAIT_MS = 60_000;
 function readPositiveIntMs(envKey, fallback) {
     const raw = process.env[envKey]?.trim();
     if (!raw)

@@ -1,14 +1,13 @@
 import { prisma } from "../infra/prisma";
 import { logger } from "../infra/logger";
+import { getRedis } from "../infra/redis";
 import { isStoredTestFeedbackText } from "../messages/testFeedback";
-import { createSarvamClientIfConfigured } from "./sarvamViaApi";
 import { LlmViaApi } from "./llmViaApi";
+import { loadLLMConfigForTask } from "./config";
 
-// Primary model for ack/reply: Sarvam when SARVAM_API_KEY is set, else Groq via LlmViaApi.
-// Summary report generation uses LlmViaApi only (see summary/stageRunner.ts).
-const sarvam = createSarvamClientIfConfigured();
-const fallbackLlm = new LlmViaApi();
-const llm = sarvam ?? fallbackLlm;
+// LLM service for ack/reply generation. Uses unified YAML-based config (llm.yaml).
+// Automatically selects appropriate provider and model based on complexity/reasoning requirements.
+const llm = new LlmViaApi();
 
 export type SaveStatus = "saved" | "save_failed";
 
@@ -18,317 +17,199 @@ export type AckDecision = {
   shouldGenerateReport?: boolean;
 };
 
-const ACK_PROMPT = `You are MeCove's WhatsApp reply engine.
+// --- Constants & Config --- //
 
-You must output:
-1) replyText: a short, human reply to the user's latest message batch
-2) shouldGenerateSummary: a boolean for whether to generate a summary now
-
-Inputs you will receive:
-- SAVE_STATUS: "saved" | "save_failed"
-- LAST_MESSAGES: recent conversation history (oldest first). "Bot:" lines are your prior replies.
-- LAST_BOT_REPLY: the single most recent "Bot:" reply (or "(none)")
-- RECENT_BOT_REPLIES: the 3 most recent "Bot:" replies (or "(none)")
-- DISALLOWED_STARTS: normalized starters from recent Bot replies; your replyText MUST NOT start with these
-- BATCHED_USER_MESSAGES: the newest user message(s). This may contain multiple lines collected by batching.
-
-Absolute output rules:
-- Return ONLY a single-line JSON object with this exact schema:
-  {"replyText":"<text>","shouldGenerateSummary":<true|false>}
-- No markdown, no code fences, no extra keys, no commentary.
-- Never output partial JSON. If unsure, output the simplest valid JSON with a short replyText.
-- replyText must be one line (no line breaks) and never empty.
-- No emojis.
-
-Language:
-- Reply in the user's language when obvious.
-  - If the user uses Devanagari, reply in Hindi (Devanagari).
-  - Otherwise reply in English only (do not use Hinglish/Hindi in Latin script).
-
-High-priority policies (apply top-down):
-
-1) Safety risk:
-If BATCHED_USER_MESSAGES indicate self-harm, suicide, or immediate danger, respond urgently and supportively:
-- Encourage immediate help now via local emergency services or a local crisis hotline.
-- Keep it short and direct.
-- Do not add observations or invitations.
-
-2) Sexual/obscene content:
-If BATCHED_USER_MESSAGES are sexual/obscene, set a boundary:
-- Say you cannot help with that kind of content here.
-- Do not engage or mirror explicit content.
-
-3) Save status:
-If SAVE_STATUS is "save_failed":
-- Say the message could not be saved and ask them to try again in a bit.
-- Do not add observations or invitations.
-
-4) Summary decision:
-Set shouldGenerateSummary = true ONLY if the user explicitly asks for a summary/recap/report.
-Examples: "summarize", "summary", "recap", "report", "can you summarize", "send my summary".
-Otherwise shouldGenerateSummary = false.
-
-5) Core role and question-handling (semantic; use your own words):
-MeCove is a lightweight journaling companion. It helps the user capture thoughts, feelings, and progress for later reflection.
-MeCove does NOT provide coaching/therapy and does NOT give advice, solutions, or diagnosis.
-
-If the user asks a question:
-- If it is small talk or meta (greetings, "how are you?", "what is this?", "what can you do?"), you may answer briefly.
-- If it is advice/solution-seeking or diagnosis/explanation-seeking (e.g., "what should I do", "how do I fix", "why am I feeling like this", "what's wrong with me"):
-  - Briefly acknowledge the question.
-  - Clearly state the role limits (journaling companion; no advice/therapy/diagnosis) in neutral language.
-  - Invite logging context by asking for ONE concrete detail to capture (examples of details: sleep, stress, routine, what happened before, what they tried).
-  - Do not sound like coaching. Do NOT say: "let's explore", "let's dig in", "let's unpack", "I'm here to help".
-  - Use your own words; do not copy the examples verbatim; do not repeat wording found in RECENT_BOT_REPLIES.
-
-Reply composition (3 sections, single-line):
-replyText = Ack (required) + [Observation] (optional) + [Open space] (optional)
-- Keep it to 1 short sentence, or at most 2 short sentences total.
-- Your replyText MUST NOT start with anything in DISALLOWED_STARTS (or near-identical wording). If it would, rewrite it.
-
-Ack (required):
-- One short sentence acknowledging the user.
-- Never use "Noted" or "Saved".
-- Avoid generic filler validation like "That makes sense." unless you refer to something specific.
-
-Observation (optional):
-- Include only sometimes, when the batch is emotional/reflective.
-- Reflection only (no advice, no diagnosis, no deep interpretation).
-- Avoid canned reassurance like "It's okay to feel this way."
-
-Open space (optional):
-- Rare; only when the user seems stuck/continuing or after refusing advice/diagnosis.
-- Gentle, non-pushy.
-
-Special cases:
-- Greetings: if the user only greets, reply with a greeting back (no open space).
-- Closings: if the user is clearly closing ("bye", "good night", "gotta go"), reply politely and briefly (no open space).
-- Repetition complaint: ONLY if the user explicitly complains about repetition ("you keep saying", "stop repeating", "same thing again"):
-  - Start with "You're right." then write a fresh reply that does NOT start with DISALLOWED_STARTS and does NOT repeat RECENT_BOT_REPLIES.
-
-Few-shot examples (examples only; do NOT copy wording verbatim):
-These examples are ONLY for guidance on structure and intent.
-You MUST NOT reuse these replies as-is, and you MUST NOT copy their phrasing.
-Write a fresh reply in your own words each time, and do not repeat wording found in RECENT_BOT_REPLIES.
-
-Example A (advice/solution question):
-User batch: "Why am I feeling lazy when I wake up?"
-Good output:
-{"replyText":"Got it. MeCove is for capturing what you're feeling rather than giving advice - what was your sleep like last night?","shouldGenerateSummary":false}
-
-Example B (diagnosis/explanation question):
-User batch: "What's wrong with me?"
-Good output:
-{"replyText":"I hear you. I can't diagnose, but we can capture what you're noticing here - what changed recently?","shouldGenerateSummary":false}
-
-Example C (emotional statement):
-User batch: "I'm feeling very scared."
-Good output:
-{"replyText":"Okay. That sounds scary.","shouldGenerateSummary":false}
-
-Example D (greeting):
-User batch: "gooooood morning"
-Good output:
-{"replyText":"Good morning.","shouldGenerateSummary":false}
-
-Example E (repetition complaint):
-User batch: "You keep saying the same thing."
-Good output:
-{"replyText":"You're right. Got it - if it helps, tell me what happened right before you started feeling this way.","shouldGenerateSummary":false}
-
-Now produce the JSON.
-
-SAVE_STATUS:
-{{SAVE_STATUS}}
-
-LAST_MESSAGES (oldest first):
-{{MESSAGES}}
-
-LAST_BOT_REPLY:
-{{LAST_BOT_REPLY}}
-
-RECENT_BOT_REPLIES:
-{{RECENT_BOT_REPLIES}}
-
-DISALLOWED_STARTS:
-{{DISALLOWED_STARTS}}
-
-BATCHED_USER_MESSAGES:
-{{LATEST_USER_MESSAGE}}
-
-Your JSON response:`;
-
+const SESSION_TTL_SECONDS = 30 * 60; // 30 minutes
+const MAX_SESSION_HISTORY = 20; // Keep last 20 messages in Redis list
 const FALLBACK_REPLY = "Got it.";
-const ACK_CONTEXT_TARGET_COUNT = 10;
-const ACK_CONTEXT_FETCH_LIMIT = 30;
+
+const NEW_SESSION_SYSTEM_PROMPT = `
+You are MeCove, a lightweight journaling companion.
+Your goal is to help the user capture thoughts, feelings, and progress for later reflection.
+You are NOT a therapist, coach, or advisor. You do NOT give advice, solutions, or diagnoses.
+
+Current Context:
+The user has just started a new session/conversation (or returned after a long break).
+
+Instructions:
+1. Warmly welcome the user back.
+2. Invite them to share what's on their mind.
+3. Keep it short (1 sentence).
+4. Do NOT ask complex questions yet.
+`;
+
+const ONGOING_SESSION_SYSTEM_PROMPT = `
+You are MeCove, a sensitive and non-robotic journaling companion.
+Your job is to acknowledge the user's input and encourage them to keep writing.
+
+CORE RULES:
+1.  **Role**: You are a safe space for logging. NOT a therapist.
+2.  **No Advice**: If user asks "what should I do?", refuse politely. Say you can't advise, but they can log the problem here.
+3.  **Encourage**: If the user seems to have paused or written a lot, encourage them to write more details.
+4.  **Confirm Storage**: Occasionally (not every time), mention that their notes are safe/stored.
+5.  **Questions**:
+    *   Casual ("how are you?"): Answer briefly.
+    *   Deep/Advice ("why me?"): Refuse to answer, turn it back to journaling ("I can't say, but we can write down how it feels").
+6.  **Safety**:
+    *   **Self-Harm**: "Please seek immediate help from local emergency services. I cannot provide crisis support."
+    *   **Sexual/Obscene**: "I cannot engage with that content. Please use MeCove for journaling."
+7.  **Closing**: If user says "bye" / "goodnight", say a warm goodbye.
+
+STYLE GUIDELINES (CRITICAL):
+*   **Non-Robotic**: Do NOT start every reply with "Got it" or "I hear you". Vary your phrasing.
+*   **Short**: 1-2 sentences max.
+*   **Mirroring**: Reflect key emotional words occasionally.
+
+INPUTS:
+- SAVE_STATUS: "saved" | "save_failed"
+- HISTORY: Recent conversation (User/Bot turns). Use this to avoid repeating yourself.
+- LATEST_USER: The new message(s) to reply to.
+
+OUTPUT FORMAT:
+Return ONLY a JSON object: {"replyText": "...", "shouldGenerateSummary": false}
+(Set shouldGenerateSummary=true ONLY if user explicitly asks for "summary" or "report").
+`;
+
+// --- Redis Session Helpers --- //
+
+type SessionMessage = {
+  role: "user" | "bot";
+  content: string;
+  timestamp: number;
+};
+
+function getSessionKey(userId: string) {
+  return `chat:session:${userId}`;
+}
+
+async function getSessionHistory(userId: string): Promise<SessionMessage[]> {
+  const redis = getRedis();
+  const key = getSessionKey(userId);
+  // LRANGE 0 -1 gets all items
+  const raw = await redis.lrange(key, 0, -1);
+  return raw.map((s) => JSON.parse(s));
+}
+
+async function appendSessionHistory(userId: string, userText: string, botText: string) {
+  const redis = getRedis();
+  const key = getSessionKey(userId);
+  const now = Date.now();
+
+  const userMsg: SessionMessage = { role: "user", content: userText, timestamp: now };
+  const botMsg: SessionMessage = { role: "bot", content: botText, timestamp: now };
+
+  // Push both
+  await redis.rpush(key, JSON.stringify(userMsg), JSON.stringify(botMsg));
+  // Trim to max size (keep last N)
+  await redis.ltrim(key, -MAX_SESSION_HISTORY, -1);
+  // Refresh TTL
+  await redis.expire(key, SESSION_TTL_SECONDS);
+}
+
+// --- Logic --- //
 
 function parseAckDecision(raw: string): AckDecision {
   const trimmed = raw.trim();
-  let candidate = trimmed;
-
-  // If model wraps JSON in a fenced block, extract inner content.
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fenceMatch?.[1]) {
-    candidate = fenceMatch[1].trim();
-  }
-
-  // If model adds prose around JSON, try to extract the first JSON object segment.
-  if (!(candidate.startsWith("{") && candidate.endsWith("}"))) {
-    const firstBrace = candidate.indexOf("{");
-    const lastBrace = candidate.lastIndexOf("}");
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      candidate = candidate.slice(firstBrace, lastBrace + 1).trim();
-    }
-  }
-
   try {
-    const parsed = JSON.parse(candidate) as Partial<AckDecision>;
-    const replyText =
-      typeof parsed.replyText === "string" && parsed.replyText.trim().length > 0
-        ? parsed.replyText.trim()
-        : FALLBACK_REPLY;
-    const shouldGenerateSummary =
-      parsed.shouldGenerateSummary === true || parsed.shouldGenerateReport === true;
-    return { replyText, shouldGenerateSummary };
-  } catch {
-    // Fallback: if output looks like malformed JSON, do not leak it to the user.
-    const looksLikeJsonLeak =
-      trimmed.startsWith("{") ||
-      trimmed.includes("```") ||
-      /"replyText"\s*:|"shouldGenerateSummary"\s*:/.test(trimmed);
-
-    if (looksLikeJsonLeak) {
-      return { replyText: FALLBACK_REPLY, shouldGenerateSummary: false };
-    }
-
-    // Backward-compatible fallback: treat raw text as reply and do not trigger summary.
+    // Try straightforward parse
+    const parsed = JSON.parse(trimmed);
     return {
-      replyText: trimmed.length > 0 ? trimmed : FALLBACK_REPLY,
-      shouldGenerateSummary: false,
+      replyText: parsed.replyText || FALLBACK_REPLY,
+      shouldGenerateSummary: !!parsed.shouldGenerateSummary,
     };
-  }
-}
-
-function normalizeReplyStart(text: string): string {
-  const singleLine = text.replace(/\s+/g, " ").trim();
-  if (singleLine.length === 0) return "";
-
-  const punctIndex = singleLine.search(/[.!?]/);
-  if (punctIndex >= 0) {
-    const firstSentence = singleLine.slice(0, punctIndex + 1).trim();
-    if (firstSentence.length >= 8 && firstSentence.length <= 120) {
-      return firstSentence.toLowerCase();
+  } catch {
+    // Attempt to find JSON in markdown types
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        return {
+          replyText: parsed.replyText || FALLBACK_REPLY,
+          shouldGenerateSummary: !!parsed.shouldGenerateSummary,
+        };
+      } catch {
+        // failed inner parse
+      }
     }
+    // Fallback if completely broken
+    logger.warn("Failed to parse LLM ack response", { raw: trimmed });
+    return { replyText: FALLBACK_REPLY, shouldGenerateSummary: false };
   }
-
-  const words = singleLine.split(/\s+/).slice(0, 8).join(" ").trim();
-  return words.toLowerCase();
 }
 
-function buildDisallowedStartsFromRecentBotReplies(recentBotReplies: string): string {
-  const rawLines = recentBotReplies
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-
-  const starts: string[] = [];
-  for (const line of rawLines) {
-    const withoutPrefix = line.startsWith("Bot: ") ? line.slice("Bot: ".length) : line;
-    const normalized = normalizeReplyStart(withoutPrefix);
-    if (!normalized) continue;
-    if (!starts.includes(normalized)) starts.push(normalized);
-  }
-
-  return starts.length > 0 ? starts.join("\n") : "(none)";
-}
-
-function renderAckPrompt(params: {
-  saveStatus: SaveStatus;
-  messagesBlock: string;
-  lastBotReply: string;
-  recentBotReplies: string;
-  disallowedStarts: string;
-  batchedUserMessages: string;
-}): string {
-  return ACK_PROMPT
-    .split("{{SAVE_STATUS}}")
-    .join(params.saveStatus)
-    .split("{{MESSAGES}}")
-    .join(params.messagesBlock)
-    .split("{{LAST_BOT_REPLY}}")
-    .join(params.lastBotReply)
-    .split("{{RECENT_BOT_REPLIES}}")
-    .join(params.recentBotReplies)
-    .split("{{DISALLOWED_STARTS}}")
-    .join(params.disallowedStarts)
-    .split("{{LATEST_USER_MESSAGE}}")
-    .join(params.batchedUserMessages);
-}
-
-/**
- * Fetches the last 10 messages for the user, passes them with the fresh message to the LLM,
- * and returns reply text + summary-generation intent.
- */
 export async function generateAckDecision(
   userId: string,
   freshMessageText: string,
   saveStatus: SaveStatus = "saved"
 ): Promise<AckDecision> {
-  const recentMessages = await prisma.message.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: ACK_CONTEXT_FETCH_LIMIT,
-    select: { text: true, createdAt: true, replyText: true, repliedAt: true },
-  });
-  // Last ACK_CONTEXT_TARGET_COUNT (10) user messages, then reverse so oldest-first for the prompt
-  const filteredRecent = recentMessages
-    .filter((m) => !isStoredTestFeedbackText(m.text))
-    .slice(0, ACK_CONTEXT_TARGET_COUNT);
-  const oldestFirst = filteredRecent.reverse();
+  const sessionHistory = await getSessionHistory(userId);
+  const isNewSession = sessionHistory.length === 0;
 
-  // Format messages as alternating User/Bot pairs (oldest first) so the LLM sees chronology and its prior replies
-  const lines: string[] = [];
-  for (const m of oldestFirst) {
-    const userLine = `User: ${(m.text ?? "(no text)").trim()}`;
-    lines.push(userLine);
-    if (m.replyText && m.repliedAt) {
-      lines.push(`Bot: ${m.replyText.trim()}`);
-    }
+  let messagesForPrompt: { role: string; content: string }[] = [];
+  let systemPrompt = ONGOING_SESSION_SYSTEM_PROMPT;
+
+  if (isNewSession) {
+    // Case 1: Session Start (Gap > 30 mins or first time)
+    // We fetch a bit of historical context from DB just so the bot isn't totally amnesiac,
+    // but the SYSTEM PROMPT will force a "Welcome Back" style.
+    const dbHistory = await prisma.message.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+    // Reverse to chronological
+    messagesForPrompt = dbHistory.reverse().map((m) => ({
+      role: "user", // Simplified: treating past DB messages as user logs for context
+      content: m.text ?? "",
+    }));
+
+    systemPrompt = NEW_SESSION_SYSTEM_PROMPT;
+  } else {
+    // Case 2: Ongoing Session
+    messagesForPrompt = sessionHistory.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
   }
 
-  const messagesBlock = lines.length > 0 ? lines.join("\n") : "(no prior messages)";
-  const botLineCount = oldestFirst.filter((m) => m.replyText && m.repliedAt).length;
+  // Construct the final prompt text
+  // We'll use a simple chat-like structure for the LLM
+  const promptLines = [
+    `SYSTEM: ${systemPrompt}`,
+    `SAVE_STATUS: ${saveStatus}`,
+    `CONTEXT_HISTORY (Do not repeat these phrases):`,
+    ...messagesForPrompt.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+    `LATEST_USER_MESSAGE: ${freshMessageText}`,
+    `Provide JSON response:`,
+  ].join("\n");
 
-  const botLines = lines.filter((l) => l.startsWith("Bot: "));
-  const lastBotReply = botLines.length > 0 ? botLines[botLines.length - 1] : "(none)";
-  const recentBotReplies =
-    botLines.length > 0 ? botLines.slice(Math.max(0, botLines.length - 3)).join("\n") : "(none)";
-  const disallowedStarts = buildDisallowedStartsFromRecentBotReplies(recentBotReplies);
+  // Determine which model will be used for logging
+  let modelName = "unknown";
+  try {
+    const config = loadLLMConfigForTask({ complexity: "low", reasoning: false });
+    modelName = `${config.provider}/${config.modelName}`;
+  } catch (err) {
+    logger.warn("Failed to load LLM config for logging", { error: err });
+  }
 
-  logger.info("ack reply", {
-    model: sarvam ? "sarvam-m" : "groq",
-    historyMessageCount: oldestFirst.length,
-    historyBotReplyCount: botLineCount,
-    lastMessagesPreview:
-      messagesBlock.length > 400
-        ? `${messagesBlock.slice(0, 200)}...${messagesBlock.slice(-200)}`
-        : messagesBlock,
+  logger.info("ack reply generation", {
+    isNewSession,
+    historyCount: messagesForPrompt.length,
+    model: modelName,
   });
 
-  const prompt = renderAckPrompt({
-    saveStatus,
-    messagesBlock,
-    lastBotReply,
-    recentBotReplies,
-    disallowedStarts,
-    batchedUserMessages: freshMessageText,
-  });
-
-  const reply = await llm.complete({
-    prompt,
-    maxTokens: 200,
+  const replyRaw = await llm.complete({
+    prompt: promptLines,
+    maxTokens: 150,
     complexity: "low",
     reasoning: false,
   });
-  return parseAckDecision(reply);
+
+  const decision = parseAckDecision(replyRaw);
+
+  // Update Session in Redis
+  await appendSessionHistory(userId, freshMessageText, decision.replyText);
+
+  return decision;
 }
+

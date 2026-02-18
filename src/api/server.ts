@@ -276,12 +276,32 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const { seq } = await appendMessageToBatch({
+      const { seq, count } = await appendMessageToBatch({
         userId: user.id,
         messageId: message.id,
         channelUserKey: toDigits,
         sourceMessageId: messageId,
       });
+
+      // Check if this is a "New Session" (Gap > 30 mins)
+      // We use the same key as ackReply.ts: chat:session:{userId}
+      // If key is missing, it means session expired or never existed -> Immediate Reply
+      const redis = await import("../infra/redis").then((m) => m.getRedis());
+      const sessionKey = `chat:session:${user.id}`;
+      const sessionExists = (await redis.exists(sessionKey)) > 0;
+
+      let delay = REPLY_BATCH_DEBOUNCE_MS; // Default 60s
+
+      if (!sessionExists) {
+        // New Session -> Immediate
+        delay = 0;
+        logger.info("new session detected, replying immediately", { userId: user.id });
+      } else if (count >= 3) {
+        // Batch Full -> Immediate
+        delay = 0;
+        logger.info("batch limit reached (3), replying immediately", { userId: user.id });
+      }
+
       await replyBatchQueue.add(
         JOB_NAME_FLUSH_REPLY_BATCH,
         {
@@ -289,7 +309,7 @@ const server = http.createServer(async (req, res) => {
           seq,
         },
         {
-          delay: REPLY_BATCH_DEBOUNCE_MS,
+          delay,
         }
       );
 
@@ -297,6 +317,9 @@ const server = http.createServer(async (req, res) => {
         userId: user.id,
         messageId: message.id,
         seq,
+        count,
+        delay,
+        sessionExists,
       });
 
       sendJSON(res, 200, { ok: true });
@@ -350,7 +373,7 @@ const server = http.createServer(async (req, res) => {
           privacy: {
             accepted: Boolean(
               identity.user.privacyAcceptedAt &&
-                identity.user.privacyAcceptedVersion === consentConfig.privacy.version
+              identity.user.privacyAcceptedVersion === consentConfig.privacy.version
             ),
             acceptedAt: identity.user.privacyAcceptedAt,
             acceptedVersion: identity.user.privacyAcceptedVersion,
@@ -359,7 +382,7 @@ const server = http.createServer(async (req, res) => {
           terms: {
             accepted: Boolean(
               identity.user.termsAcceptedAt &&
-                identity.user.termsAcceptedVersion === consentConfig.terms.version
+              identity.user.termsAcceptedVersion === consentConfig.terms.version
             ),
             acceptedAt: identity.user.termsAcceptedAt,
             acceptedVersion: identity.user.termsAcceptedVersion,
@@ -368,7 +391,7 @@ const server = http.createServer(async (req, res) => {
           mvp: {
             accepted: Boolean(
               identity.user.mvpAcceptedAt &&
-                identity.user.mvpAcceptedVersion === consentConfig.mvp.version
+              identity.user.mvpAcceptedVersion === consentConfig.mvp.version
             ),
             acceptedAt: identity.user.mvpAcceptedAt,
             acceptedVersion: identity.user.mvpAcceptedVersion,

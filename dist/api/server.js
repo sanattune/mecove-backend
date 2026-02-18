@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -214,22 +247,42 @@ const server = node_http_1.default.createServer(async (req, res) => {
                 sendJSON(res, 200, { ok: true });
                 return;
             }
-            const { seq } = await (0, state_2.appendMessageToBatch)({
+            const { seq, count } = await (0, state_2.appendMessageToBatch)({
                 userId: user.id,
                 messageId: message.id,
                 channelUserKey: toDigits,
                 sourceMessageId: messageId,
             });
+            // Check if this is a "New Session" (Gap > 30 mins)
+            // We use the same key as ackReply.ts: chat:session:{userId}
+            // If key is missing, it means session expired or never existed -> Immediate Reply
+            const redis = await Promise.resolve().then(() => __importStar(require("../infra/redis"))).then((m) => m.getRedis());
+            const sessionKey = `chat:session:${user.id}`;
+            const sessionExists = (await redis.exists(sessionKey)) > 0;
+            let delay = config_2.REPLY_BATCH_DEBOUNCE_MS; // Default 60s
+            if (!sessionExists) {
+                // New Session -> Immediate
+                delay = 0;
+                logger_1.logger.info("new session detected, replying immediately", { userId: user.id });
+            }
+            else if (count >= 3) {
+                // Batch Full -> Immediate
+                delay = 0;
+                logger_1.logger.info("batch limit reached (3), replying immediately", { userId: user.id });
+            }
             await replyBatchQueue_1.replyBatchQueue.add(replyBatchQueue_1.JOB_NAME_FLUSH_REPLY_BATCH, {
                 userId: user.id,
                 seq,
             }, {
-                delay: config_2.REPLY_BATCH_DEBOUNCE_MS,
+                delay,
             });
             logger_1.logger.info("reply batch scheduled", {
                 userId: user.id,
                 messageId: message.id,
                 seq,
+                count,
+                delay,
+                sessionExists,
             });
             sendJSON(res, 200, { ok: true });
         }
