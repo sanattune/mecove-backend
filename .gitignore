@@ -4,3 +4,13 @@ node_modules
 *.env
 
 /src/generated/prisma
+
+# Build output
+dist
+
+# Terraform
+infra/terraform/.terraform
+**/.terraform
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
