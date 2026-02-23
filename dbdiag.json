@@ -1,0 +1,12 @@
+{
+  "containerOverrides": [
+    {
+      "name": "api",
+      "command": [
+        "node",
+        "-e",
+        "const {Client}=require('pg'); const base={host:process.env.DB_HOST,port:Number(process.env.DB_PORT||'5432'),user:process.env.DB_USER,password:process.env.DB_PASSWORD,ssl:{rejectUnauthorized:false}}; (async()=>{ const c1=new Client({...base,database:'postgres'}); await c1.connect(); const r=await c1.query(\"select current_user, current_database() db\"); console.log('CONNECTED',r.rows[0]); const p=await c1.query(\"select datname, pg_get_userbyid(datdba) owner, datacl from pg_database where datname='mecove'\"); console.log('DBROW',JSON.stringify(p.rows[0]||null)); const h=await c1.query(\"select has_database_privilege(current_user,'mecove','CONNECT') can_connect\"); console.log('PRIV',h.rows[0]); await c1.end(); const c2=new Client({...base,database:'mecove'}); await c2.connect(); await c2.query('select 1'); console.log('CONNECT_TO_MECOVE_OK'); await c2.end(); })().catch(e=>{ console.error('DBDIAG_FAIL',e.message||String(e)); process.exit(1); });"
+      ]
+    }
+  ]
+}

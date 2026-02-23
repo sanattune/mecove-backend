@@ -412,6 +412,11 @@ const replyBatchWorker = new bullmq_1.Worker(replyBatchQueue_1.REPLY_BATCH_QUEUE
                 replyText = decision.replyText.trim();
             }
             shouldGenerateSummary = decision.shouldGenerateSummary;
+            logger_1.logger.info("ack decision summary flag", {
+                userId,
+                shouldGenerateSummary,
+                batchMessageCount: combinedText ? combinedText.split(/\n/).length : 0,
+            });
         }
         catch (err) {
             logger_1.logger.warn("LLM batch reply generation failed, using fallback", err);

@@ -1,0 +1,12 @@
+{
+  "containerOverrides": [
+    {
+      "name": "api",
+      "command": [
+        "node",
+        "-e",
+        "const {Client}=require('pg'); const host=process.env.DB_HOST; const port=Number(process.env.DB_PORT||'5432'); const user=process.env.DB_USER; const password=process.env.DB_PASSWORD; (async()=>{ const c=new Client({host,port,user,password,database:'postgres',ssl:{rejectUnauthorized:false}}); await c.connect(); await c.query('ALTER DATABASE mecove OWNER TO \"'+user+'\"'); await c.query('GRANT CONNECT ON DATABASE mecove TO \"'+user+'\"'); await c.query('GRANT ALL PRIVILEGES ON DATABASE mecove TO \"'+user+'\"'); await c.end(); console.log('DB grants OK'); })().catch(e=>{ console.error(e); process.exit(1); });"
+      ]
+    }
+  ]
+}

@@ -553,6 +553,8 @@ If replies aren't being sent:
 
 ## 🔗 Related Documentation
 
+- [AWS deployment architecture discussion](docs/aws-architecture-discussion.md)
+- [AWS MVP setup runbook (resume context)](docs/aws-mvp-setup-runbook.md)
 - [Prisma Documentation](https://www.prisma.io/docs)
 - [BullMQ Documentation](https://docs.bullmq.io)
 - [Docker Compose Documentation](https://docs.docker.com/compose/)

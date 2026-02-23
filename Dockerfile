@@ -23,6 +23,10 @@ RUN pnpm prune --prod
 FROM node:20-slim AS runtime
 WORKDIR /app
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable
 
 COPY --from=build /app/package.json ./
@@ -33,5 +37,8 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/consent.config.yaml ./
 
-USER node
+# Prisma CLI may need to download/write engine binaries at runtime (e.g., during migrations).
+# Ensure the non-root `node` user can write to /app (including node_modules).
+RUN chown -R node:node /app
 
+USER node

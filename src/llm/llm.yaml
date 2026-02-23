@@ -1,4 +1,4 @@
-# LLM provider and model config. Env vars like ${GROQ_API_KEY} are resolved from process.env.
+# LLM provider and model config. Env vars like ${OPENAI_API_KEY} are resolved from process.env.
 # Models are selected based on complexity (low/medium/high) and reasoning requirements.
 # Selection algorithm:
 #   1. Filter by reasoning requirement (if specified)
@@ -6,37 +6,73 @@
 #   3. Fallback to first available model
 
 providers:
-  groq:
-    api_key: ${GROQ_API_KEY}
+  # groq:
+  #   api_key: ${GROQ_API_KEY}
+  #   models:
+  #     - name: llama-3.1-8b-instant
+  #       complexity: [low]
+  #       reasoning: false
+  #       tasks: [text_generation, summarization]
+  #       cost_per_1m_tokens: 0.13
+  #       max_tokens: 131072
+  #     - name: openai/gpt-oss-20b
+  #       complexity: [low, medium]
+  #       reasoning: false
+  #       tasks: [text_generation, summarization]
+  #       cost_per_1m_tokens: 0.375
+  #       max_tokens: 65536
+  #     - name: llama-3.3-70b-versatile
+  #       complexity: [medium, high]
+  #       reasoning: false
+  #       tasks: [text_generation, summarization]
+  #       cost_per_1m_tokens: 1.38
+  #       max_tokens: 32768
+  #     - name: openai/gpt-oss-120b
+  #       complexity: [high]
+  #       reasoning: true
+  #       tasks: [text_generation, summarization]
+  #       cost_per_1m_tokens: 0.75
+  #       max_tokens: 65536
+  # sarvam (if added to YAML later):
+  #   api_key: ${SARVAM_API_KEY}
+  #   models:
+  #     - name: sarvam-m
+  #       complexity: [low]
+  #       reasoning: false
+  #       tasks: [text_generation, summarization]
+  #       max_tokens: 4096
+
+  openai:
+    api_key: ${OPENAI_API_KEY}
     models:
-      # Fast, cheap model for simple tasks (low complexity)
-      - name: llama-3.1-8b-instant
+      # Cheapest model for ack/reply (low complexity). See https://developers.openai.com/api/docs/pricing
+      - name: gpt-4.1-nano
         complexity: [low]
         reasoning: false
         tasks: [text_generation, summarization]
-        cost_per_1m_tokens: 0.13
-        max_tokens: 131072
+        cost_per_1m_tokens: 0.10
+        max_tokens: 16384
         
-      # Balanced model for medium complexity tasks
-      - name: openai/gpt-oss-20b
+      # Balanced model for medium complexity (e.g. L1 canonicalizer)
+      - name: gpt-4o
         complexity: [low, medium]
         reasoning: false
         tasks: [text_generation, summarization]
-        cost_per_1m_tokens: 0.375
-        max_tokens: 65536
+        cost_per_1m_tokens: 2.50
+        max_tokens: 16384
         
-      # High capability model for complex tasks
-      - name: llama-3.3-70b-versatile
-        complexity: [medium, high]
+      # Slightly better model for complex tasks (writers L2A, L2B)
+      - name: gpt-4.1
+        complexity: [high]
         reasoning: false
         tasks: [text_generation, summarization]
-        cost_per_1m_tokens: 1.38
-        max_tokens: 32768
+        cost_per_1m_tokens: 2.00
+        max_tokens: 16384
         
-      # Reasoning-capable model (for tasks requiring deep analysis)
-      - name: openai/gpt-oss-120b
+      # Reasoning-capable model for deep analysis (L3 GuardFix)
+      - name: gpt-4.1
         complexity: [high]
         reasoning: true
         tasks: [text_generation, summarization]
-        cost_per_1m_tokens: 0.75
-        max_tokens: 65536
+        cost_per_1m_tokens: 2.00
+        max_tokens: 16384

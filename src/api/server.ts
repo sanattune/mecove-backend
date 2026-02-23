@@ -52,8 +52,17 @@ type WhatsAppWebhookPayload = {
 if (!process.env.REDIS_URL?.trim()) {
   throw new Error("REDIS_URL is required. Set it in .env");
 }
-if (!process.env.DATABASE_URL?.trim()) {
-  throw new Error("DATABASE_URL is required. Set it in .env");
+const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
+const hasDatabaseParts = Boolean(
+  process.env.DB_HOST?.trim() &&
+    process.env.DB_NAME?.trim() &&
+    process.env.DB_USER?.trim() &&
+    process.env.DB_PASSWORD?.trim()
+);
+if (!hasDatabaseUrl && !hasDatabaseParts) {
+  throw new Error(
+    "DATABASE_URL (or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD) is required. Set it in the environment."
+  );
 }
 
 const port = 3000;
@@ -159,7 +168,28 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && pathname === "/webhooks/whatsapp") {
     try {
       const raw = await readBody(req);
-      const body = JSON.parse(raw) as WhatsAppWebhookPayload;
+      if (!raw || raw.trim().length === 0) {
+        logger.warn("POST /webhooks/whatsapp received empty body", {
+          contentType: req.headers["content-type"],
+          contentLength: req.headers["content-length"],
+        });
+        sendJSON(res, 400, { ok: false, error: "Empty request body" });
+        return;
+      }
+
+      let body: WhatsAppWebhookPayload;
+      try {
+        body = JSON.parse(raw) as WhatsAppWebhookPayload;
+      } catch (err) {
+        logger.warn("POST /webhooks/whatsapp received invalid JSON", {
+          contentType: req.headers["content-type"],
+          contentLength: req.headers["content-length"],
+          rawLength: raw.length,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        sendJSON(res, 400, { ok: false, error: "Invalid JSON" });
+        return;
+      }
       const inbound = getInboundMessage(body);
       if (!inbound?.from) {
         sendJSON(res, 200, { ok: true });

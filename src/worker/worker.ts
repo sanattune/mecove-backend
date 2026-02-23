@@ -54,8 +54,17 @@ import {
 if (!process.env.REDIS_URL?.trim()) {
   throw new Error("REDIS_URL is required. Set it in .env");
 }
-if (!process.env.DATABASE_URL?.trim()) {
-  throw new Error("DATABASE_URL is required. Set it in .env");
+const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
+const hasDatabaseParts = Boolean(
+  process.env.DB_HOST?.trim() &&
+    process.env.DB_NAME?.trim() &&
+    process.env.DB_USER?.trim() &&
+    process.env.DB_PASSWORD?.trim()
+);
+if (!hasDatabaseUrl && !hasDatabaseParts) {
+  throw new Error(
+    "DATABASE_URL (or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD) is required. Set it in the environment."
+  );
 }
 
 const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
@@ -512,6 +521,11 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
           replyText = decision.replyText.trim();
         }
         shouldGenerateSummary = decision.shouldGenerateSummary;
+        logger.info("ack decision summary flag", {
+          userId,
+          shouldGenerateSummary,
+          batchMessageCount: combinedText ? combinedText.split(/\n/).length : 0,
+        });
       } catch (err) {
         logger.warn("LLM batch reply generation failed, using fallback", err);
       }

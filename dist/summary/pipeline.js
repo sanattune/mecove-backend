@@ -46,7 +46,7 @@ async function generateSummaryPipeline(input) {
             prompt: (0, prompts_1.buildWriterS2S3Prompt)(canonical, windowBundle.section3AllowedByCounts),
             maxTokens: 2200,
             validate: validation_1.isDraftS2S3,
-            complexity: 'medium',
+            complexity: 'high',
             reasoning: false,
         });
         logger_1.logger.info("summary stage done", {
@@ -61,7 +61,7 @@ async function generateSummaryPipeline(input) {
             prompt: (0, prompts_1.buildWriterS4Prompt)(canonical),
             maxTokens: 3600,
             validate: validation_1.isDraftS4,
-            complexity: 'medium',
+            complexity: 'high',
             reasoning: false,
         });
         logger_1.logger.info("summary stage done", {

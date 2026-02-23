@@ -30,6 +30,7 @@ services:
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       NGROK_ADMIN_URL: http://ngrok:4040
     ports:
       - "3000:3000"
@@ -48,6 +49,7 @@ services:
       WHATSAPP_PERMANENT_TOKEN: ${WHATSAPP_PERMANENT_TOKEN:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       - postgres
       - redis
