@@ -145,6 +145,12 @@ pnpm prisma migrate dev
    pnpm dev:worker
    ```
 
+6. **Puppeteer (summary PDFs)** — If you run the worker locally, PDF generation needs Chrome. Install it once:
+   ```bash
+   npx puppeteer browsers install chrome
+   ```
+   (In Docker, the image uses system Chromium; no extra step needed.)
+
 ### Available Scripts
 
 | Script | Description |

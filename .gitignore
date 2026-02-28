@@ -14,3 +14,7 @@ infra/terraform/.terraform
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+# Deploy keys and secrets (never commit)
+*-deploy-key
+*-deploy-key.pub
+*.pem

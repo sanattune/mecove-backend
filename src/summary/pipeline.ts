@@ -125,7 +125,7 @@ export async function generateSummaryPipeline(
     await writeSummaryArtifact(input.userId, input.summaryId, "final_sections", finalSections);
 
     const finalReportText = assembleFinalReport(windowBundle, finalSections);
-    const pdfBytes = renderReportPdf(finalReportText);
+    const pdfBytes = await renderReportPdf(windowBundle, finalSections);
     const promptVersionString = [
       `canon:${PROMPT_VERSIONS.canonicalizer}`,
       `wA:${PROMPT_VERSIONS.writerS2S3}`,

@@ -1,34 +1,6 @@
-resource "aws_security_group" "rds" {
-  name        = "${local.name}-rds"
-  description = "Postgres access from ECS tasks"
-  vpc_id      = module.vpc.vpc_id
-
-  ingress {
-    description     = "Postgres from API/Worker tasks"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.api_tasks.id, aws_security_group.worker_tasks.id]
-  }
-
-  egress {
-    description = "All egress"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name    = "${local.name}-rds"
-    Project = local.project
-    Env     = local.env
-  }
-}
-
 resource "aws_db_subnet_group" "main" {
   name       = "${local.name}-db"
-  subnet_ids = module.vpc.private_subnets
+  subnet_ids = module.vpc.public_subnets
 
   tags = {
     Name    = "${local.name}-db"
@@ -60,10 +32,8 @@ resource "aws_db_instance" "postgres" {
   skip_final_snapshot = true
   deletion_protection = false
 
-  # Free tier restriction: keep backups disabled for MVP/free-tier accounts.
-  # You can raise this later (e.g., 7) once the account is upgraded.
-  backup_retention_period  = 0
-  delete_automated_backups = true
+  backup_retention_period  = var.rds_backup_retention_period
+  delete_automated_backups = var.rds_backup_retention_period == 0
 
   tags = {
     Name    = "${local.name}-postgres"

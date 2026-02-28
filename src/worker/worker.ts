@@ -274,7 +274,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
         if (!windowBundle) {
           windowBundle = await buildWindowBundle(userId, "Asia/Kolkata");
         }
-        const fallback = buildMinimalFallbackReport(windowBundle);
+        const fallback = await buildMinimalFallbackReport(windowBundle);
         const fallbackFilename = `mecove-summary-${windowBundle.window.endDate}.pdf`;
         await sendWhatsAppDocument(
           channelUserKey,

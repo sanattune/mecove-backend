@@ -1,31 +1,18 @@
-output "vpc_id" {
-  value = module.vpc.vpc_id
+output "elastic_ip" {
+  description = "Public IP for DNS A record"
+  value       = aws_eip.main.public_ip
 }
 
-output "public_subnet_ids" {
-  value = module.vpc.public_subnets
+output "instance_id" {
+  value = aws_instance.main.id
 }
 
-output "private_subnet_ids" {
-  value = module.vpc.private_subnets
+output "ssm_start_session_command" {
+  description = "Start an SSM session to the instance (requires AWS CLI + SSM plugin)"
+  value       = "aws ssm start-session --target ${aws_instance.main.id}"
 }
 
-output "alb_dns_name" {
-  value = aws_lb.api.dns_name
-}
-
-output "alb_zone_id" {
-  value = aws_lb.api.zone_id
-}
-
-output "api_security_group_id" {
-  value = aws_security_group.api_tasks.id
-}
-
-output "worker_security_group_id" {
-  value = aws_security_group.worker_tasks.id
-}
-
-output "api_domain_name" {
-  value = var.api_domain_name
+output "ssm_deploy_command" {
+  description = "Run deploy.sh via SSM without an interactive session"
+  value       = "aws ssm send-command --document-name AWS-RunShellScript --targets Key=instanceIds,Values=${aws_instance.main.id} --parameters commands='sudo -u mecove /home/mecove/deploy.sh' --comment 'mecove deploy'"
 }

@@ -1,70 +1,62 @@
 # AWS MVP Setup Runbook (meCove Backend)
 
-This is a “resume-from-here” runbook capturing what we set up, what we debugged, and the exact names/commands used.
+This is a "resume-from-here" runbook capturing what we set up, what we debugged, and the exact names/commands used.
 
 It is intentionally verbose and operational. Do **not** store any secrets in this file.
+
+> For the full architecture overview, see [`aws-architecture.md`](./aws-architecture.md).
 
 ## 0) Safety / key notes
 
 - **Never paste secrets into chat/PRs/logs.** During setup, secrets were accidentally exposed in terminal/chat; rotate keys if that happens again (OpenAI key, WhatsApp token, DB password).
-- RDS is in **private subnets**, so your laptop cannot connect directly to Postgres. For DB actions, run one-off ECS tasks.
+- RDS is only accessible from the EC2 instance (security group restricted). For DB actions, SSH into the EC2 instance.
 - PowerShell quoting can break JSON CLI args; prefer `file://overrides.json` with **no BOM**.
 
-## 1) High-level architecture (MVP)
+## 1) High-level architecture (current MVP)
 
 - **Region:** `ap-south-1`
-- **Domain:** `api.mecove.com` (DNS hosted at Hostinger; we used CNAME)
-- **Ingress:** ALB (HTTPS via ACM) → ECS Fargate API container (port `3000`)
-- **Compute:** ECS Fargate
-  - API service: `mecove-mvp-api`
-  - Worker service: `mecove-mvp-worker`
-- **Data:**
-  - RDS Postgres 16: `mecove-mvp-postgres` (private)
-  - ElastiCache Redis 7.1: `mecove-mvp-redis` (private)
+- **Domain:** `api.mecove.com` (DNS A record pointing to Elastic IP)
+- **Compute:** Single EC2 instance (`t4g.small`, Amazon Linux 2023 ARM64)
+- **Reverse proxy:** Caddy (auto Let's Encrypt TLS on `:443` → `localhost:3000`)
+- **Process manager:** PM2 (API + Worker)
+- **Cache:** Redis 6 (local on EC2, `:6379`)
+- **Database:** RDS PostgreSQL 16 (`db.t4g.micro`, private access via EC2 SG only)
 - **Secrets:** AWS Secrets Manager
   - App secret: `mecove-mvp/app-secrets` (WhatsApp + LLM keys)
   - RDS secret: auto-managed by RDS (master username/password)
+  - GitHub deploy key: ED25519 SSH key for private repo cloning
 - **Logs:** CloudWatch Log Groups
-  - `/ecs/mecove-mvp/api`
-  - `/ecs/mecove-mvp/worker`
+  - `/ec2/mecove-mvp/api`
+  - `/ec2/mecove-mvp/worker`
+  - `/ec2/mecove-mvp/caddy`
 
 ## 2) AWS account details used during setup
 
 - **AWS Account ID:** `498735610795`
 - **AWS CLI identity (example):** `arn:aws:iam::498735610795:user/santosh-admin`
 
-## 3) DNS + TLS (Hostinger + ACM)
+## 3) DNS + TLS
 
-### 3.1 ACM certificate
+### 3.1 TLS via Caddy
 
-- Certificate ARN:
-  - `arn:aws:acm:ap-south-1:498735610795:certificate/08ea4708-902f-4404-b7c4-a2c69beca41e`
-- We requested wildcard + apex:
-  - `mecove.com`
-  - `*.mecove.com`
+TLS is handled automatically by Caddy using Let's Encrypt. No ACM certificate is needed for the EC2 setup.
 
-### 3.2 Hostinger DNS records
+Caddy is configured to serve `api.mecove.com` and auto-provisions + renews the certificate.
 
-**ACM validation CNAME** (example used):
+### 3.2 DNS (Hostinger)
 
-- Type: `CNAME`
-- Name/Host: `_3e982c9e9e879b7f437aa4ebadbbf20f`
-- Target: `_a79af4ba4ae197453dcc5ab2e96aa78e.jkddzztszm.acm-validations.aws`
-- TTL: `300`
+**API domain A record:**
 
-**API domain CNAME** (ALB):
-
-- Type: `CNAME`
+- Type: `A`
 - Name/Host: `api`
-- Target:
-  - `mecove-mvp-alb-1697608693.ap-south-1.elb.amazonaws.com`
+- Target: `<ELASTIC_IP>` (from `terraform output elastic_ip`)
 - TTL: `300`
 
-### 3.3 DNS verification commands
+### 3.3 DNS verification
 
 ```powershell
-nslookup -type=CNAME _3e982c9e9e879b7f437aa4ebadbbf20f.mecove.com
 nslookup api.mecove.com
+curl https://api.mecove.com/health
 ```
 
 ## 4) Terraform setup
@@ -83,7 +75,7 @@ aws s3api put-bucket-versioning --bucket mecove-tfstate-498735610795 --versionin
 
 ### 4.2 Terraform location
 
-- Terraform lives in this repo under: `infra/terraform`
+Terraform lives in this repo under: `infra/terraform`
 
 Initialize:
 
@@ -95,114 +87,147 @@ terraform plan
 terraform apply
 ```
 
-### 4.3 Terraform files created
+### 4.3 Terraform files
 
 In `infra/terraform`:
 
 - `versions.tf` / `backend.tf` / `provider.tf`
-- `vpc.tf` (VPC module: CIDR `10.0.0.0/16`, 2 AZs, public+private subnets, **no NAT**)
-- `security-groups.tf`
-- `alb.tf` (ALB 80→443 redirect, target group to port `3000`, health check `/health`)
-- `logs.tf` (CloudWatch log groups)
-- `ecr.tf` (ECR repo `mecove-mvp`, `force_delete = true` for clean destroys)
-- `rds.tf` (RDS Postgres 16, single-AZ; backups disabled due to free-tier restriction)
-- `redis.tf` (ElastiCache Redis 7.1; parameter group sets `maxmemory-policy=noeviction`)
-- `ecs.tf` (ECS cluster + task defs + services)
+- `vpc.tf` (VPC module: CIDR `10.0.0.0/16`, 2 AZs, 2 public subnets, **no NAT**)
+- `security-groups.tf` (EC2 SG + RDS SG)
+- `ec2.tf` (EC2 instance, Elastic IP, IAM role/profile, SSH key pair)
+- `rds.tf` (RDS Postgres 16, single-AZ, backups disabled)
+- `logs.tf` (CloudWatch log groups, 14-day retention)
+- `user_data.sh.tpl` (bootstrap script: packages, Node.js, Caddy, app deploy, PM2, CloudWatch agent)
 - `variables.tf` / `outputs.tf`
 
-### 4.4 Key Terraform variables used (as defaults)
+### 4.4 Key Terraform variables
 
-- `acm_certificate_arn` = `arn:aws:acm:ap-south-1:498735610795:certificate/08ea4708-902f-4404-b7c4-a2c69beca41e`
 - `api_domain_name` = `api.mecove.com`
-- `app_secrets_arn` = `arn:aws:secretsmanager:ap-south-1:498735610795:secret:mecove-mvp/app-secrets-XMe5kC`
+- `app_secrets_arn` = Secrets Manager ARN for app secrets
+- `github_deploy_key_secret_arn` = Secrets Manager ARN for GitHub SSH key
+- `github_repo` = `git@github.com:jazzjazzy/mecove-backend.git`
+- `github_branch` = `main`
+- `instance_type` = `t4g.small`
+- `ssh_allowed_cidrs` = defaults to `0.0.0.0/0` (restrict in production)
 
-## 5) What was deployed (names/IDs observed)
+## 5) What was deployed (from Terraform outputs)
 
-These came from `terraform output` during setup.
-
-- VPC: `vpc-0f15f647344a9d43f`
-- Public subnets:
-  - `subnet-0f3c5ecd1e03e80f9`
-  - `subnet-027614a2ca0251537`
-- Private subnets:
-  - `subnet-01d21299153c6a23a`
-  - `subnet-05f3a75c306cdbcb3`
-- ALB DNS:
-  - `mecove-mvp-alb-1697608693.ap-south-1.elb.amazonaws.com`
-- ECR repo URL:
-  - `498735610795.dkr.ecr.ap-south-1.amazonaws.com/mecove-mvp`
-- RDS endpoint:
-  - `mecove-mvp-postgres.cp062gs66srn.ap-south-1.rds.amazonaws.com:5432`
-- Redis endpoint:
-  - `mecove-mvp-redis.siz9nr.0001.aps1.cache.amazonaws.com:6379`
-- App secret ARN:
-  - `arn:aws:secretsmanager:ap-south-1:498735610795:secret:mecove-mvp/app-secrets-XMe5kC`
-- RDS secret ARN (auto-created):
-  - `arn:aws:secretsmanager:ap-south-1:498735610795:secret:rds!db-46c1dba1-d0b0-4752-8a45-15ee61a9ff1f-yE4o34`
-
-## 6) Build + push image to ECR
-
-ECR login (PowerShell, known to work):
+After `terraform apply`, get values with:
 
 ```powershell
-docker login -u AWS -p (aws ecr get-login-password --region ap-south-1) 498735610795.dkr.ecr.ap-south-1.amazonaws.com
+terraform output
 ```
 
-Build + push:
+Key outputs:
+
+- `elastic_ip` — public IP for DNS A record
+- `instance_id` — EC2 instance ID
+- `ssh_command` — ready-to-use SSH command
+- `deploy_command` — ready-to-use deploy trigger
+- `ssh_private_key` — generated ED25519 key (sensitive; use `terraform output -raw ssh_private_key > mecove-mvp.pem`)
+- `rds_endpoint` — PostgreSQL hostname
+- `rds_port` — `5432`
+- `rds_master_secret_arn` — ARN of DB password secret
+
+## 6) SSH access
+
+Save the SSH private key:
 
 ```powershell
-docker build -t mecove-mvp .
-docker tag mecove-mvp:latest 498735610795.dkr.ecr.ap-south-1.amazonaws.com/mecove-mvp:latest
-docker push 498735610795.dkr.ecr.ap-south-1.amazonaws.com/mecove-mvp:latest
+terraform output -raw ssh_private_key > mecove-mvp.pem
+chmod 600 mecove-mvp.pem   # Linux/Mac
 ```
 
-Force ECS redeploy:
+Connect:
 
 ```powershell
-aws ecs update-service --region ap-south-1 --cluster mecove-mvp --service mecove-mvp-api --force-new-deployment
-aws ecs update-service --region ap-south-1 --cluster mecove-mvp --service mecove-mvp-worker --force-new-deployment
+ssh -i mecove-mvp.pem ec2-user@<ELASTIC_IP>
 ```
 
-Health check:
+Or use the output directly:
 
 ```powershell
-irm https://api.mecove.com/health
+$(terraform output -raw ssh_command)
 ```
 
-## 7) Secrets setup (AWS Secrets Manager)
+## 7) Deploying application updates
 
-We created one “app secrets” secret for MVP:
+### 7.1 Using the deploy script (recommended)
+
+```powershell
+ssh -i mecove-mvp.pem ec2-user@<ELASTIC_IP> "sudo -u mecove /home/mecove/deploy.sh"
+```
+
+The deploy script does:
+1. `git pull` latest from configured branch
+2. `pnpm install --frozen-lockfile`
+3. `pnpm build`
+4. Re-load secrets from Secrets Manager → regenerate `.env`
+5. `npx prisma migrate deploy`
+6. `pm2 restart all`
+
+### 7.2 Manual deploy steps (if needed)
+
+```bash
+# SSH in first
+ssh -i mecove-mvp.pem ec2-user@<ELASTIC_IP>
+
+# Switch to app user
+sudo -iu mecove
+cd ~/app
+
+# Pull and build
+git pull
+pnpm install --frozen-lockfile
+pnpm build
+
+# Reload env from Secrets Manager
+source ~/load-env.sh
+
+# Run migrations
+npx prisma migrate deploy
+
+# Restart processes
+pm2 restart all
+pm2 status
+```
+
+## 8) Secrets setup (AWS Secrets Manager)
+
+App secrets:
 
 - Name: `mecove-mvp/app-secrets`
-- ARN:
-  - `arn:aws:secretsmanager:ap-south-1:498735610795:secret:mecove-mvp/app-secrets-XMe5kC`
+- ARN: `arn:aws:secretsmanager:ap-south-1:498735610795:secret:mecove-mvp/app-secrets-XMe5kC`
 
-Suggested keys (do not store values here):
+Expected keys (do not store values here):
 
 - `WHATSAPP_VERIFY_TOKEN`
 - `WHATSAPP_PHONE_NUMBER_ID`
 - `WHATSAPP_PERMANENT_TOKEN`
 - `OPENAI_API_KEY`
 
-These are injected into ECS using `secrets` in `infra/terraform/ecs.tf`.
+These are fetched at runtime by the `load-env.sh` script on EC2 and written to `.env`.
 
-## 8) CloudWatch logs commands
+## 9) CloudWatch logs
 
 Tail logs:
 
 ```powershell
-aws logs tail "/ecs/mecove-mvp/api" --region ap-south-1 --follow --since 30m
-aws logs tail "/ecs/mecove-mvp/worker" --region ap-south-1 --follow --since 30m
+aws logs tail "/ec2/mecove-mvp/api" --region ap-south-1 --follow --since 30m
+aws logs tail "/ec2/mecove-mvp/worker" --region ap-south-1 --follow --since 30m
+aws logs tail "/ec2/mecove-mvp/caddy" --region ap-south-1 --follow --since 30m
 ```
 
-Get newest stream then fetch events:
+Or SSH in and check PM2 logs directly:
 
-```powershell
-aws logs describe-log-streams --log-group-name "/ecs/mecove-mvp/api" --order-by LastEventTime --descending --max-items 1
-aws logs get-log-events --log-group-name "/ecs/mecove-mvp/api" --log-stream-name "<STREAM>" --limit 200
+```bash
+ssh -i mecove-mvp.pem ec2-user@<ELASTIC_IP>
+sudo -iu mecove
+pm2 logs api --lines 100
+pm2 logs worker --lines 100
 ```
 
-## 9) Webhook verification test (no Meta UI required)
+## 10) Webhook verification test
 
 ```powershell
 irm "https://api.mecove.com/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=<VERIFY_TOKEN>&hub.challenge=test123"
@@ -210,7 +235,7 @@ irm "https://api.mecove.com/webhooks/whatsapp?hub.mode=subscribe&hub.verify_toke
 
 Expected output: `test123`
 
-## 10) Local “fake WhatsApp message” POST (for testing API end-to-end)
+## 11) Local "fake WhatsApp message" POST (for testing)
 
 ```powershell
 $payload = @{
@@ -235,131 +260,105 @@ Invoke-WebRequest -Method Post `
   -Body ($payload | ConvertTo-Json -Depth 20)
 ```
 
-## 11) ECS one-off tasks (migrations + DB diagnostics)
+## 12) Database access (via EC2)
 
-### 11.1 Prisma migrations (inside AWS)
+RDS is not publicly accessible. Access it through the EC2 instance:
 
-Problem: laptop cannot reach private RDS; run in ECS.
+```bash
+ssh -i mecove-mvp.pem ec2-user@<ELASTIC_IP>
+sudo -iu mecove
+cd ~/app
 
-Create `overrides.json` **without BOM** (ASCII):
+# Source the env to get DB credentials
+source ~/load-env.sh
 
-```powershell
-@'
-{
-  "containerOverrides": [
-    {
-      "name": "api",
-      "command": ["pnpm", "prisma", "migrate", "deploy"]
-    }
-  ]
-}
-'@ | Out-File -Encoding ascii overrides.json
+# Use Prisma Studio (if available)
+npx prisma studio
+
+# Or connect via psql (if installed)
+psql "$DATABASE_URL"
 ```
 
-Run task:
+### Running migrations
 
-```powershell
-$taskArn = aws ecs run-task --region ap-south-1 --cluster mecove-mvp --launch-type FARGATE `
-  --task-definition mecove-mvp-api:3 `
-  --network-configuration "awsvpcConfiguration={subnets=[subnet-0f3c5ecd1e03e80f9,subnet-027614a2ca0251537],securityGroups=[sg-0e7341f4cc23f8f14],assignPublicIp=ENABLED}" `
-  --overrides file://overrides.json `
-  --query "tasks[0].taskArn" --output text
-
-aws ecs wait tasks-stopped --region ap-south-1 --cluster mecove-mvp --tasks $taskArn
-aws ecs describe-tasks --region ap-south-1 --cluster mecove-mvp --tasks $taskArn --query "tasks[0].containers[0].exitCode" --output text
+```bash
+ssh -i mecove-mvp.pem ec2-user@<ELASTIC_IP>
+sudo -iu mecove
+cd ~/app
+source ~/load-env.sh
+npx prisma migrate deploy
 ```
 
-### 11.2 DB diagnostic task (connect to `postgres` + `mecove`)
+## 13) PM2 process management
 
-This was used to confirm ownership + CONNECT privileges.
+```bash
+# SSH in as mecove user
+ssh -i mecove-mvp.pem ec2-user@<ELASTIC_IP>
+sudo -iu mecove
 
-```powershell
-@'
-{
-  "containerOverrides": [
-    {
-      "name": "api",
-      "command": [
-        "node",
-        "-e",
-        "const {Client}=require('pg'); const base={host:process.env.DB_HOST,port:Number(process.env.DB_PORT||'5432'),user:process.env.DB_USER,password:process.env.DB_PASSWORD,ssl:{rejectUnauthorized:false}}; (async()=>{ const c1=new Client({...base,database:'postgres'}); await c1.connect(); const r=await c1.query(\"select current_user, current_database() db\"); console.log('CONNECTED',r.rows[0]); const p=await c1.query(\"select datname, pg_get_userbyid(datdba) owner, datacl from pg_database where datname='mecove'\"); console.log('DBROW',JSON.stringify(p.rows[0]||null)); const h=await c1.query(\"select has_database_privilege(current_user,'mecove','CONNECT') can_connect\"); console.log('PRIV',h.rows[0]); await c1.end(); const c2=new Client({...base,database:'mecove'}); await c2.connect(); await c2.query('select 1'); console.log('CONNECT_TO_MECOVE_OK'); await c2.end(); })().catch(e=>{ console.error('DBDIAG_FAIL',e.message||String(e)); process.exit(1); });"
-      ]
-    }
-  ]
-}
-'@ | Out-File -Encoding ascii dbdiag.json
+# Status
+pm2 status
+
+# Restart
+pm2 restart all
+pm2 restart api
+pm2 restart worker
+
+# Logs
+pm2 logs
+pm2 logs api --lines 200
+pm2 logs worker --lines 200
+
+# Monitoring dashboard
+pm2 monit
 ```
 
-Run it with `aws ecs run-task ... --overrides file://dbdiag.json`.
+## 14) Known issues hit + fixes
 
-## 12) Known issues hit + fixes
+### 14.1 RDS free-tier restriction error
 
-### 12.1 `InvalidClientTokenId` on `aws sts get-caller-identity`
-
-Cause: AWS CLI not configured. Fix: create IAM user + access keys + `aws configure`.
-
-### 12.2 ECR login failing with HTTP 400
-
-Workaround:
-
-```powershell
-docker login -u AWS -p (aws ecr get-login-password --region ap-south-1) 498735610795.dkr.ecr.ap-south-1.amazonaws.com
-```
-
-### 12.3 Redis eviction policy warning
-
-BullMQ prefers `noeviction`. Fix: ElastiCache parameter group sets `maxmemory-policy=noeviction`, then restart ECS tasks.
-
-### 12.4 RDS free-tier restriction error
-
-Error: “backup retention period exceeds maximum available to free tier customers”.
+Error: "backup retention period exceeds maximum available to free tier customers".
 Fix: `backup_retention_period = 0` and `delete_automated_backups = true`.
 
-### 12.5 Postgres SSL
+### 14.2 Postgres SSL
 
-RDS had `rds.force_ssl=1`. We configured ECS to set:
+RDS has `rds.force_ssl=1`. The `load-env.sh` script sets the appropriate SSL parameters in the `DATABASE_URL` connection string.
 
-- `DB_SSLMODE=require`
-- `DB_USELIBPQCOMPAT=true`
-
-and the app builds the connection string from `DB_*` parts (not a raw `DATABASE_URL`).
-
-### 12.6 WhatsApp test/sandbox restriction
+### 14.3 WhatsApp test/sandbox restriction
 
 Meta error: `Recipient phone number not in allowed list`.
 Fix: add test recipient number in Meta / use a permitted number.
 
-## 13) Status snapshot (when this doc was written)
+### 14.4 Summary PDF (Puppeteer/Chromium)
 
-- Core infra was created via Terraform, with ALB reachable at `https://api.mecove.com/health`.
-- We were still troubleshooting TLS + WhatsApp reply restrictions when session ended.
+The worker generates summary PDFs via Puppeteer using Chromium installed on the EC2 instance. `PUPPETEER_EXECUTABLE_PATH` is set to the system Chromium path. If PDF jobs fail with Chrome/Chromium errors, SSH in and verify Chromium is installed (`which chromium-browser` or `which chromium`).
 
-## 14) Pause / destroy to stop costs
+## 15) Pause / destroy to stop costs
 
-### 14.1 Pause (keep infra, stop compute)
-
-Helper scripts:
+### 15.1 Pause (keep infra, stop compute)
 
 ```powershell
-.\scripts\aws_pause_mvp.ps1
-.\scripts\aws_status_mvp.ps1
-```
+# Stop EC2 instance
+aws ec2 stop-instances --region ap-south-1 --instance-ids <INSTANCE_ID>
 
-Manual:
-
-```powershell
-aws ecs update-service --region ap-south-1 --cluster mecove-mvp --service mecove-mvp-api --desired-count 0
-aws ecs update-service --region ap-south-1 --cluster mecove-mvp --service mecove-mvp-worker --desired-count 0
+# Stop RDS
 aws rds stop-db-instance --region ap-south-1 --db-instance-identifier mecove-mvp-postgres
 ```
 
 Resume:
 
 ```powershell
-.\scripts\aws_resume_mvp.ps1
+# Start EC2 instance
+aws ec2 start-instances --region ap-south-1 --instance-ids <INSTANCE_ID>
+
+# Start RDS
+aws rds start-db-instance --region ap-south-1 --db-instance-identifier mecove-mvp-postgres
 ```
 
-### 14.2 Destroy (stop most costs; deletes infra + data)
+> Note: Elastic IP still costs ~$3.65/month when the instance is stopped.
+> RDS auto-restarts after 7 days if stopped; re-stop if needed.
+
+### 15.2 Destroy (stop all costs; deletes infra + data)
 
 ```powershell
 cd infra/terraform
@@ -370,4 +369,4 @@ Non-Terraform leftovers to consider deleting manually:
 
 - Terraform state bucket: `mecove-tfstate-498735610795`
 - Secrets: `mecove-mvp/app-secrets` and the RDS secret
-- ACM certificate (no monthly cost; keep if you will reuse)
+- GitHub deploy key secret

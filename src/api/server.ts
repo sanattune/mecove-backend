@@ -115,10 +115,10 @@ function buildConsentPromptBody(step: ConsentStep, preface?: string): string {
   if (preface && preface.trim().length > 0) {
     lines.push(preface.trim());
   }
-  lines.push(section.message.trim());
   if (section.link && section.link.trim().length > 0) {
-    lines.push(`Read: ${section.link.trim()}`);
+    lines.push(`Detailed Policy: ${section.link.trim()}`);
   }
+  lines.push(section.message.trim());
   return lines.join("\n\n");
 }
 
@@ -377,24 +377,6 @@ const server = http.createServer(async (req, res) => {
         channelUserKey: identity.channelUserKey,
         pendingStep,
         accepted: {
-          privacy: {
-            accepted: Boolean(
-              identity.user.privacyAcceptedAt &&
-                identity.user.privacyAcceptedVersion === consentConfig.privacy.version
-            ),
-            acceptedAt: identity.user.privacyAcceptedAt,
-            acceptedVersion: identity.user.privacyAcceptedVersion,
-            currentVersion: consentConfig.privacy.version,
-          },
-          terms: {
-            accepted: Boolean(
-              identity.user.termsAcceptedAt &&
-                identity.user.termsAcceptedVersion === consentConfig.terms.version
-            ),
-            acceptedAt: identity.user.termsAcceptedAt,
-            acceptedVersion: identity.user.termsAcceptedVersion,
-            currentVersion: consentConfig.terms.version,
-          },
           mvp: {
             accepted: Boolean(
               identity.user.mvpAcceptedAt &&

@@ -1,6 +1,6 @@
-resource "aws_security_group" "alb" {
-  name        = "${local.name}-alb"
-  description = "ALB ingress (80/443) from internet"
+resource "aws_security_group" "ec2" {
+  name        = "${local.name}-ec2"
+  description = "EC2 instance: HTTP/HTTPS from internet (no public SSH)"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
@@ -28,57 +28,28 @@ resource "aws_security_group" "alb" {
   }
 
   tags = {
-    Name    = "${local.name}-alb"
+    Name    = "${local.name}-ec2"
     Project = local.project
     Env     = local.env
   }
 }
 
-resource "aws_security_group" "api_tasks" {
-  name        = "${local.name}-api"
-  description = "API ECS tasks"
+resource "aws_security_group" "rds" {
+  name        = "${local.name}-rds"
+  description = "Postgres access from EC2 instance only"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
-    description     = "From ALB to API container"
-    from_port       = 3000
-    to_port         = 3000
+    description     = "Postgres from EC2"
+    from_port       = 5432
+    to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  egress {
-    description = "All egress (tighten later)"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    security_groups = [aws_security_group.ec2.id]
   }
 
   tags = {
-    Name    = "${local.name}-api"
+    Name    = "${local.name}-rds"
     Project = local.project
     Env     = local.env
   }
 }
-
-resource "aws_security_group" "worker_tasks" {
-  name        = "${local.name}-worker"
-  description = "Worker ECS tasks"
-  vpc_id      = module.vpc.vpc_id
-
-  egress {
-    description = "All egress (tighten later)"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name    = "${local.name}-worker"
-    Project = local.project
-    Env     = local.env
-  }
-}
-

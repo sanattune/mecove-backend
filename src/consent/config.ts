@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 
-export type ConsentStep = "privacy" | "terms" | "mvp";
+export type ConsentStep = "mvp";
 
 export type ConsentStepConfig = {
   version: string;
@@ -15,8 +15,6 @@ export type ConsentStepConfig = {
 };
 
 export type ConsentConfig = {
-  privacy: ConsentStepConfig;
-  terms: ConsentStepConfig;
   mvp: ConsentStepConfig;
   templates: {
     blocked: string;
@@ -77,8 +75,6 @@ function parseConsentConfig(raw: unknown): ConsentConfig {
     throw new Error('Invalid consent config: "templates" section is required');
   }
   return {
-    privacy: parseStepConfig(root.privacy, "privacy"),
-    terms: parseStepConfig(root.terms, "terms"),
     mvp: parseStepConfig(root.mvp, "mvp"),
     templates: {
       blocked: asNonEmptyString(templates.blocked, "templates.blocked"),

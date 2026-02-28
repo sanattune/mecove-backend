@@ -1,25 +1,21 @@
-privacy:
-  version: "v1"
-  message: "Privacy (sample): We store your messages to provide chat logging and summary generation. We do not share your data by default."
-  link: "https://example.com/privacy"
-  buttons:
-    accept: "Accept Privacy"
-    later: "Later"
-
-terms:
-  version: "v1"
-  message: "Terms (sample): This is an MVP service for note capture and summary support. It is not emergency support or medical advice."
-  link: "https://example.com/terms"
-  buttons:
-    accept: "Accept Terms"
-    later: "Later"
-
 mvp:
   version: "v1"
-  message: "MVP notice (sample): Features may change. You can request deletion of your data anytime."
-  link: "https://example.com/mvp-notice"
+  message: |-
+    By participating in the SessionBridge MVP, you acknowledge that:
+
+    * This is a test-phase product that may malfunction or be discontinued.
+    * Data loss may occur.
+    * The Service is not therapy, medical care, counseling, coaching, or crisis support.
+    * The Service does not monitor for emergencies.
+    * Messages may be processed by third-party AI providers.
+    * Limited internal technical access may occur for debugging.
+    * No uptime guarantees or service level commitments are provided.
+    * You are responsible for the content you submit and how you use exported summaries.
+
+    If you do not agree with these conditions, you should not use the Service.
+  link: "https://example.com/mvp-policy"
   buttons:
-    accept: "Accept MVP Notice"
+    accept: "Accept"
     later: "Later"
 
 templates:

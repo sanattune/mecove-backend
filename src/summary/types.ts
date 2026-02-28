@@ -75,8 +75,14 @@ export type DraftS2S3 = {
   section3Included: boolean;
 };
 
+/** One day in Logged Moments: short date label (e.g. "March seven") and paragraph content. */
+export type Section4Moment = {
+  dateLabel: string;
+  content: string;
+};
+
 export type DraftS4 = {
-  section4Text: string;
+  section4Moments: Section4Moment[];
 };
 
 export type FinalSections = {
@@ -85,7 +91,7 @@ export type FinalSections = {
   section2Text: string;
   section3Text: string;
   section3Included: boolean;
-  section4Text: string;
+  section4Moments: Section4Moment[];
 };
 
 export type PromptVersions = {

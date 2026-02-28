@@ -1,4 +1,4 @@
-import type { CanonicalDoc, DraftS2S3, DraftS4, FinalSections } from "./types";
+import type { CanonicalDoc, DraftS2S3, DraftS4, FinalSections, Section4Moment } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -71,20 +71,25 @@ export function isDraftS2S3(value: unknown): value is DraftS2S3 {
   );
 }
 
+function isSection4Moment(value: unknown): value is Section4Moment {
+  return isRecord(value) && asString(value.dateLabel) && asString(value.content);
+}
+
 export function isDraftS4(value: unknown): value is DraftS4 {
   if (!isRecord(value)) return false;
-  return asString(value.section4Text);
+  if (!asArray(value.section4Moments)) return false;
+  return value.section4Moments.every(isSection4Moment);
 }
 
 export function isFinalSections(value: unknown): value is FinalSections {
   if (!isRecord(value)) return false;
   if (!(value.status === "PASS" || value.status === "FIXED")) return false;
   if (!asArray(value.changes) || !value.changes.every(asString)) return false;
+  if (!asArray(value.section4Moments) || !value.section4Moments.every(isSection4Moment)) return false;
   return (
     asString(value.section2Text) &&
     asString(value.section3Text) &&
-    asBoolean(value.section3Included) &&
-    asString(value.section4Text)
+    asBoolean(value.section3Included)
   );
 }
 
@@ -96,7 +101,6 @@ export function validateFinalSectionRules(
   const errors: string[] = [];
   const section2 = finalSections.section2Text.trim();
   const section3 = finalSections.section3Text.trim();
-  const section4 = finalSections.section4Text.trim();
 
   if (!section2) {
     errors.push("Section 2 is empty.");
@@ -104,8 +108,8 @@ export function validateFinalSectionRules(
     errors.push('Section 2 must include "Limits:" line.');
   }
 
-  if (!section4) {
-    errors.push("Section 4 is empty.");
+  if (!Array.isArray(finalSections.section4Moments)) {
+    errors.push("Section 4 must be an array of moments.");
   }
 
   if (finalSections.section3Included) {

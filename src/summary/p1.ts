@@ -1,20 +1,16 @@
-import { buildSummaryPdf } from "../infra/pdf";
+import { renderHtmlToPdf } from "../infra/pdf";
 import type { FinalSections, WindowBundle } from "./types";
-
-export function buildSection1(windowBundle: WindowBundle): string {
-  return [
-    "## Section 1 - Time Window & Scope",
-    `Window: ${windowBundle.window.startDate} to ${windowBundle.window.endDate} (last 15 calendar days, ${windowBundle.timezone})`,
-    `Days with entries: ${windowBundle.counts.daysWithEntries} of ${windowBundle.window.days}`,
-    "Limits: This summary only reflects messages that were logged in this window.",
-  ].join("\n");
-}
+import { buildHtmlReport } from "./reportHtml";
+import { logger } from "../infra/logger";
 
 export function assembleFinalReport(windowBundle: WindowBundle, finalSections: FinalSections): string {
   const parts: string[] = [];
   parts.push("# SessionBridge 15-Day Summary");
   parts.push("");
-  parts.push(buildSection1(windowBundle));
+  parts.push("## Section 1 - Time Window & Scope");
+  parts.push(`Window: ${windowBundle.window.startDate} to ${windowBundle.window.endDate} (last 15 calendar days, ${windowBundle.timezone})`);
+  parts.push(`Days with entries: ${windowBundle.counts.daysWithEntries} of ${windowBundle.window.days}`);
+  parts.push("Limits: This summary only reflects messages that were logged in this window.");
   parts.push("");
   parts.push("## Section 2 - Observed Patterns & Limits");
   parts.push(finalSections.section2Text.trim());
@@ -25,50 +21,78 @@ export function assembleFinalReport(windowBundle: WindowBundle, finalSections: F
     parts.push("");
   }
   parts.push("## Section 4 - Logged Moments");
-  parts.push(finalSections.section4Text.trim());
-  parts.push("");
+  if (finalSections.section4Moments.length === 0) {
+    parts.push("No logged moments in this window.");
+  } else {
+    for (const m of finalSections.section4Moments) {
+      parts.push(m.dateLabel);
+      parts.push(m.content);
+      parts.push("");
+    }
+  }
   return parts.join("\n");
 }
 
-export function renderReportPdf(reportText: string): Buffer {
-  const lines = reportText.split("\n");
-  return buildSummaryPdf(lines);
+/**
+ * Render report as PDF using the HTML template (SessionBridge design).
+ * This is the only PDF generation method - HTML template is required.
+ */
+export async function renderReportPdf(
+  windowBundle: WindowBundle,
+  finalSections: FinalSections
+): Promise<Buffer> {
+  const html = buildHtmlReport(windowBundle, finalSections);
+  logger.info("rendering PDF from HTML template", { htmlLength: html.length });
+  return await renderHtmlToPdf(html);
 }
 
-export function buildMinimalFallbackReport(windowBundle: WindowBundle): { reportText: string; pdfBytes: Buffer } {
+export async function buildMinimalFallbackReport(
+  windowBundle: WindowBundle
+): Promise<{ reportText: string; pdfBytes: Buffer }> {
   const section2 = [
     "- Repetition details are limited due to processing fallback.",
     "Limits: This fallback summary is based on direct reconstruction of logged entries only.",
   ].join("\n");
 
-  const section4Lines: string[] = [];
+  const section4Moments: Array<{ dateLabel: string; content: string }> = [];
   for (const day of windowBundle.days) {
-    const dateHeader = `### ${day.date}`;
     const joined = day.messages.map((m) => m.text.trim()).filter((t) => t.length > 0).join(" ");
-    section4Lines.push(dateHeader);
-    section4Lines.push(joined || "No text captured for this day.");
-    section4Lines.push("");
-  }
-  if (section4Lines.length === 0) {
-    section4Lines.push("No logged messages were found in this 15-day window.");
+    section4Moments.push({
+      dateLabel: day.date,
+      content: joined || "No text captured for this day.",
+    });
   }
 
   const reportText = [
     "# SessionBridge 15-Day Summary",
     "",
-    buildSection1(windowBundle),
+    `## Section 1 - Time Window & Scope`,
+    `Window: ${windowBundle.window.startDate} to ${windowBundle.window.endDate} (last 15 calendar days, ${windowBundle.timezone})`,
+    `Days with entries: ${windowBundle.counts.daysWithEntries} of ${windowBundle.window.days}`,
+    "Limits: This summary only reflects messages that were logged in this window.",
     "",
     "## Section 2 - Observed Patterns & Limits",
     section2,
     "",
     "## Section 4 - Logged Moments",
-    section4Lines.join("\n"),
+    section4Moments.map((m) => `${m.dateLabel}\n${m.content}`).join("\n\n"),
     "",
   ].join("\n");
 
+  const minimalFinalSections: FinalSections = {
+    status: "PASS",
+    changes: [],
+    section2Text: section2,
+    section3Text: "",
+    section3Included: false,
+    section4Moments,
+  };
+
+  const pdfBytes = await renderReportPdf(windowBundle, minimalFinalSections);
+
   return {
     reportText,
-    pdfBytes: renderReportPdf(reportText),
+    pdfBytes,
   };
 }
 

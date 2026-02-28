@@ -7,7 +7,7 @@
   "scripts": {
     "dev:api": "tsx watch src/api/server.ts",
     "dev:worker": "tsx watch src/worker/worker.ts",
-    "build": "tsc -p tsconfig.json && node -e \"require('fs').mkdirSync('dist/llm',{recursive:true}); require('fs').copyFileSync('src/llm/llm.yaml','dist/llm/llm.yaml');\"",
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').mkdirSync('dist/llm',{recursive:true}); require('fs').copyFileSync('src/llm/llm.yaml','dist/llm/llm.yaml');\" && node -e \"const fs=require('fs'); const p='dist/summary/template'; fs.mkdirSync(p,{recursive:true}); fs.mkdirSync(p+'/images',{recursive:true}); fs.copyFileSync('src/summary/template/sessionbridge-report.html', p+'/sessionbridge-report.html'); fs.copyFileSync('src/summary/template/styles.css', p+'/styles.css'); const imgs=fs.readdirSync('src/summary/template/images'); imgs.forEach(f=>fs.copyFileSync('src/summary/template/images/'+f, p+'/images/'+f));\"",
     "start:api": "node dist/api/server.js",
     "start:worker": "node dist/worker/worker.js",
     "db:smoke": "tsx src/scripts/db_smoke.ts",
@@ -28,6 +28,7 @@
     "ioredis": "^5.9.2",
     "pg": "^8.18.0",
     "prisma": "^7.3.0",
+    "puppeteer": "^24.15.0",
     "yaml": "^2.7.0"
   }
 }

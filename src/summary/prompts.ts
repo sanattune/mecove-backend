@@ -33,6 +33,7 @@ Output schema (exact keys, camelCase):
 
 Rules:
 - Use only provided user logs. Do not invent facts.
+- Ignore messages that are solely requests for a summary or report (e.g. "generate my summary", "I want my report", "send report", "give me my summary"). Do not extract facts from them; exclude them from topic sentence and facts for that day.
 - No advice, no interpretation, no causality.
 - Every fact must include sourceSnippet.
 - Topic sentence must be descriptive and neutral.
@@ -59,10 +60,10 @@ Output schema (exact keys):
 }
 
 Rules:
-- Use only canonical facts provided.
-- Section 2:
-  - bullet-style lines about repeated elements
-  - MUST include one line that begins with "Limits:"
+- Use only canonical facts provided. Do not mention or reflect summary/report requests in the report.
+- Section 2 (Observed Patterns and Limits):
+  - bullet-style lines about repeated elements (if any)
+  - MUST include one line that begins with "Limits:" followed by at least one sentence (e.g. "Limits: Based on N logged days. [Brief note on data scope or why patterns are/are not meaningful.]"). Never leave the Limits line empty or without explanation.
   - no causality, no advice, no interpretation
 - Section 3:
   - include only if section3AllowedByCounts=true AND canonical.limitsSignals.reflectionDefensible=true
@@ -83,19 +84,20 @@ export function buildWriterS4Prompt(canonical: CanonicalDoc): string {
 
 Return JSON only. No markdown. No commentary.
 
-Output schema:
+Output schema (exact keys):
 {
-  "section4Text": "string"
+  "section4Moments": [
+    { "dateLabel": "March seven", "content": "One or two sentence summary for this day." }
+  ]
 }
 
 Rules:
-- One consolidated entry per calendar day.
-- Use canonical.perDay[].topicSentenceSeed as anchor for each day.
-- Preserve all distinct factual points from canonical.perDay[].facts.
-- Include emotions only if explicitly present in canonical.
-- Preserve numeric values exactly.
-- No advice, no inference, no invention.
-- Coverage-first: do not drop distinct facts for brevity.
+- One object per calendar day that has entries in canonical.perDay. Order by date (earliest first).
+- Ignore summary/report requests: do not include them in content. Use only substantive log content from canonical.
+- dateLabel: Short, human-readable date for the report. Use format like "March seven", "March thirteen", or "7 Mar 2026". Derive from the day's date in canonical.perDay[].date (YYYY-MM-DD).
+- content: One or two neutral sentences summarizing that day. Use canonical.perDay[].topicSentenceSeed and canonical.perDay[].facts. Preserve all distinct factual points. Include emotions only if explicitly in canonical. Preserve numeric values exactly.
+- No advice, no inference, no invention. Coverage-first: do not drop distinct facts for brevity.
+- If canonical.perDay is empty, return "section4Moments": [].
 
 Input canonical JSON:
 ${JSON.stringify(canonical)}`;
@@ -118,15 +120,18 @@ Output schema (exact keys):
   "section2Text": "string",
   "section3Text": "string",
   "section3Included": true,
-  "section4Text": "string"
+  "section4Moments": [
+    { "dateLabel": "March seven", "content": "One or two sentence summary for this day." }
+  ]
 }
 
 Responsibilities:
 - Remove advice, causality, interpretation.
-- Ensure Section 2 includes a "Limits:" line.
+- Ensure Section 2 includes a "Limits:" line with at least one sentence after it (e.g. data scope or why patterns are/are not meaningful).
 - Ensure Section 3 is statements only (no questions), 1-3 lines if included.
 - If section3AllowedByCounts=false OR reflection not defensible, remove Section 3.
-- Preserve factual coverage in Section 4. Do not add new facts.
+- Preserve Section 4 as array of { dateLabel, content }. Do not add new facts; fix only compliance issues.
+- Remove any mention of summary or report requests from Section 4 content.
 - Keep output neutral and structured.
 
 Input section3AllowedByCounts:

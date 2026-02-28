@@ -52,5 +52,29 @@ if (!url) {
   throw new Error("DATABASE_URL (or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD) is required.");
 }
 
-const adapter = new PrismaPg({ connectionString: url });
+function buildPgPoolConfig(connectionString: string): {
+  connectionString: string;
+  ssl?: { rejectUnauthorized: boolean };
+} {
+  const parsed = new URL(connectionString);
+  const sslMode = (parsed.searchParams.get("sslmode") ?? "").toLowerCase();
+  const rejectUnauthorizedRaw = process.env.DB_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase();
+  const rejectUnauthorized =
+    rejectUnauthorizedRaw === "true" ? true : rejectUnauthorizedRaw === "false" ? false : undefined;
+
+  const isRds = parsed.hostname.endsWith(".rds.amazonaws.com");
+  const needsTls = sslMode !== "" && sslMode !== "disable";
+
+  if (!needsTls) return { connectionString };
+
+  // For RDS we want encryption-in-transit, but we don't require CA validation for MVP.
+  // Setting rejectUnauthorized=false avoids "self-signed certificate in certificate chain".
+  const shouldSkipVerify = rejectUnauthorized === false || (rejectUnauthorized === undefined && isRds);
+
+  return shouldSkipVerify
+    ? { connectionString, ssl: { rejectUnauthorized: false } }
+    : { connectionString };
+}
+
+const adapter = new PrismaPg(buildPgPoolConfig(url));
 export const prisma = new PrismaClient({ adapter });
