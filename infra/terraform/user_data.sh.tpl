@@ -24,9 +24,19 @@ npm install -g pm2
 echo "=== [3/11] Caddy ==="
 dnf install -y ca-certificates tar
 
-# Install Caddy (static binary) for Linux ARM64
-# (Use official download endpoint; GitHub "latest" asset names vary.)
-curl -fsSL -o /usr/bin/caddy "https://caddyserver.com/api/download?os=linux&arch=arm64"
+# Install Caddy (static binary)
+# (Use official download endpoint; choose arch at runtime.)
+machine_arch="$(uname -m)"
+case "$machine_arch" in
+  x86_64) caddy_arch="amd64" ;;
+  aarch64|arm64) caddy_arch="arm64" ;;
+  *)
+    echo "Unsupported arch for caddy: $machine_arch"
+    exit 1
+    ;;
+esac
+
+curl -fsSL -o /usr/bin/caddy "https://caddyserver.com/api/download?os=linux&arch=$caddy_arch"
 chmod 0755 /usr/bin/caddy
 
 getent group caddy >/dev/null || groupadd --system caddy

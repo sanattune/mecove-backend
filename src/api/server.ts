@@ -136,10 +136,14 @@ async function sendConsentPrompt(
 }
 
 const server = http.createServer(async (req, res) => {
-  if (req.method === "GET" && req.url === "/health") {
+  if ((req.method === "GET" || req.method === "HEAD") && req.url === "/health") {
     res.statusCode = 200;
     res.setHeader("Content-Type", "text/plain");
-    res.end("OK");
+    if (req.method === "HEAD") {
+      res.end();
+    } else {
+      res.end("OK");
+    }
     return;
   }
 
