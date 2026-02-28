@@ -76,13 +76,13 @@ resource "aws_iam_instance_profile" "ec2" {
 # ---------------------------------------------------------------------------
 # AMI — Amazon Linux 2023 ARM64
 # ---------------------------------------------------------------------------
-data "aws_ami" "al2023_arm" {
+data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-arm64"]
+    values = ["al2023-ami-*-${var.ami_arch}"]
   }
 
   filter {
@@ -95,7 +95,7 @@ data "aws_ami" "al2023_arm" {
 # EC2 Instance
 # ---------------------------------------------------------------------------
 resource "aws_instance" "main" {
-  ami                    = data.aws_ami.al2023_arm.id
+  ami                    = data.aws_ami.al2023.id
   instance_type          = var.instance_type
   key_name               = aws_key_pair.main.key_name
   subnet_id              = module.vpc.public_subnets[0]

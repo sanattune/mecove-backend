@@ -165,8 +165,13 @@ sudo -u mecove bash -c '
 
   # Ensure Puppeteer has a browser available for PDF rendering.
   # (This downloads Chrome to /home/mecove/.cache/puppeteer on first provision.)
-  if [ ! -d "$HOME/.cache/puppeteer" ] || [ -z "$(ls -A "$HOME/.cache/puppeteer" 2>/dev/null)" ]; then
-    pnpm exec puppeteer browsers install chrome
+  arch="$(uname -m)"
+  if [ "$arch" = "x86_64" ]; then
+    if [ ! -d "$HOME/.cache/puppeteer" ] || [ -z "$(ls -A "$HOME/.cache/puppeteer" 2>/dev/null)" ]; then
+      pnpm exec puppeteer browsers install chrome
+    fi
+  else
+    echo "Skipping Puppeteer Chrome install on arch=$arch (Chrome for Testing is not available)."
   fi
 
   pnpm build
@@ -279,8 +284,13 @@ pnpm install --frozen-lockfile --ignore-scripts=false
 pnpm exec prisma generate
 
 # Ensure Puppeteer browser exists for PDF rendering (download once).
-if [ ! -d "$HOME/.cache/puppeteer" ] || [ -z "$(ls -A "$HOME/.cache/puppeteer" 2>/dev/null)" ]; then
-  pnpm exec puppeteer browsers install chrome
+arch="$(uname -m)"
+if [ "$arch" = "x86_64" ]; then
+  if [ ! -d "$HOME/.cache/puppeteer" ] || [ -z "$(ls -A "$HOME/.cache/puppeteer" 2>/dev/null)" ]; then
+    pnpm exec puppeteer browsers install chrome
+  fi
+else
+  echo "Skipping Puppeteer Chrome install on arch=$arch (Chrome for Testing is not available)."
 fi
 
 pnpm build

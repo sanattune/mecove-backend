@@ -33,6 +33,16 @@ variable "instance_type" {
   default     = "t4g.small"
 }
 
+variable "ami_arch" {
+  description = "AMI architecture for Amazon Linux 2023 (arm64 or x86_64). Use x86_64 for Puppeteer/Chrome compatibility."
+  type        = string
+  default     = "arm64"
+  validation {
+    condition     = contains(["arm64", "x86_64"], var.ami_arch)
+    error_message = "ami_arch must be either 'arm64' or 'x86_64'."
+  }
+}
+
 variable "rds_backup_retention_period" {
   description = "RDS automated backup retention in days. Some Free Tier accounts are restricted to 0."
   type        = number
