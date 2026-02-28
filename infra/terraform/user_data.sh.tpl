@@ -4,7 +4,7 @@ exec > >(tee /var/log/user-data.log) 2>&1
 
 echo "=== [1/11] System packages ==="
 dnf update -y
-dnf install -y git jq curl-minimal redis6 amazon-cloudwatch-agent \
+dnf install -y git jq curl-minimal unzip redis6 amazon-cloudwatch-agent \
   alsa-lib atk cups-libs gtk3 mesa-libgbm nss pango \
   libXcomposite libXcursor libXdamage libXext libXi libXrandr libXScrnSaver libXtst \
   xorg-x11-fonts-Type1 xorg-x11-fonts-misc fontconfig freetype
@@ -157,7 +157,20 @@ chown mecove:mecove /home/mecove/load-env.sh
 
 echo "=== [8/11] Install + build ==="
 cd /home/mecove/app
-sudo -u mecove bash -c 'cd /home/mecove/app && pnpm install --frozen-lockfile --ignore-scripts=false && pnpm exec prisma generate && pnpm build'
+sudo -u mecove bash -c '
+  set -euo pipefail
+  cd /home/mecove/app
+  pnpm install --frozen-lockfile --ignore-scripts=false
+  pnpm exec prisma generate
+
+  # Ensure Puppeteer has a browser available for PDF rendering.
+  # (This downloads Chrome to /home/mecove/.cache/puppeteer on first provision.)
+  if [ ! -d "$HOME/.cache/puppeteer" ] || [ -z "$(ls -A "$HOME/.cache/puppeteer" 2>/dev/null)" ]; then
+    pnpm exec puppeteer browsers install chrome
+  fi
+
+  pnpm build
+'
 
 echo "=== [9/11] Load env + Prisma migrate ==="
 sudo -u mecove /home/mecove/load-env.sh
@@ -264,6 +277,12 @@ cd /home/mecove/app
 git pull --ff-only
 pnpm install --frozen-lockfile --ignore-scripts=false
 pnpm exec prisma generate
+
+# Ensure Puppeteer browser exists for PDF rendering (download once).
+if [ ! -d "$HOME/.cache/puppeteer" ] || [ -z "$(ls -A "$HOME/.cache/puppeteer" 2>/dev/null)" ]; then
+  pnpm exec puppeteer browsers install chrome
+fi
+
 pnpm build
 
 # Reload secrets
