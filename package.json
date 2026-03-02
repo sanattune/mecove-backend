@@ -11,6 +11,7 @@
     "start:api": "node dist/api/server.js",
     "start:worker": "node dist/worker/worker.js",
     "db:smoke": "tsx src/scripts/db_smoke.ts",
+    "db:wipe": "tsx src/scripts/db_wipe.ts",
     "sync:webhook": "tsx src/scripts/syncMetaWebhook.ts",
     "check:reply-queue": "tsx src/scripts/check_reply_queue.ts",
     "seed:chat": "tsx seed/seedChatData.ts"
