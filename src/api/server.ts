@@ -337,6 +337,14 @@ const server = http.createServer(async (req, res) => {
         const hasPrompt = (await redis.exists(promptKey)) > 0;
         if (hasPrompt) {
           const actionId = extractInboundActionId(inbound);
+
+          if (actionId === SUMMARY_RANGE_CANCEL_ACTION_ID) {
+            await redis.del(promptKey);
+            await sendWhatsAppReply(toDigits, "Request cancelled.");
+            sendJSON(res, 200, { ok: true });
+            return;
+          }
+
           const selectedRange = actionId ? SUMMARY_RANGE_ACTION_IDS[actionId] : undefined;
           if (selectedRange) {
             await redis.del(promptKey);
@@ -384,21 +392,8 @@ const server = http.createServer(async (req, res) => {
             return;
           }
 
-          if (actionId === SUMMARY_RANGE_CANCEL_ACTION_ID) {
-            await redis.del(promptKey);
-            await sendWhatsAppReply(toDigits, "Canceled the report request.");
-            sendJSON(res, 200, { ok: true });
-            return;
-          }
-
-          await redis.expire(promptKey, SUMMARY_RANGE_PROMPT_TTL_SECONDS);
-          await sendWhatsAppReply(
-            toDigits,
-            "I can generate the report only after you press one of the range buttons."
-          );
-          await sendSummaryRangePrompts(toDigits);
-          sendJSON(res, 200, { ok: true });
-          return;
+          // Not a button press (or unknown button). Treat this as a fresh message and stop waiting.
+          await redis.del(promptKey);
         }
       }
 
