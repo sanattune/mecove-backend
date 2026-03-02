@@ -119,12 +119,22 @@ const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
 const SUMMARY_ALREADY_RUNNING_TEXT =
   "Your previous summary is still being generated. Please wait.";
 const SUMMARY_DEFAULT_RANGE: GenerateSummaryPayload["range"] = "last_15_days";
+const SUMMARY_RANGE_CANCEL_ACTION_ID = "summary_range_cancel";
 
 const SUMMARY_RANGE_ACTION_IDS: Record<string, GenerateSummaryPayload["range"]> = {
   summary_range_7: "last_7_days",
   summary_range_15: "last_15_days",
   summary_range_30: "last_30_days",
 };
+
+async function sendSummaryRangePrompts(toDigits: string): Promise<void> {
+  await sendWhatsAppButtons(toDigits, "Report for:", [
+    { id: "summary_range_7", title: "Last 7 days" },
+    { id: "summary_range_15", title: "Last 15 days" },
+    { id: "summary_range_30", title: "Last 30 days" },
+  ]);
+  await sendWhatsAppButtons(toDigits, "Cancel:", [{ id: SUMMARY_RANGE_CANCEL_ACTION_ID, title: "Cancel request" }]);
+}
 
 function summaryRangePromptKey(userId: string): string {
   return `summary:range_prompt:${SUMMARY_RANGE_PROMPT_KEY_VERSION}:${userId}`;
@@ -288,14 +298,11 @@ const server = http.createServer(async (req, res) => {
         const welcomeKey = `onboarding:welcome:${consentConfig.welcome.version}:${user.id}`;
         const welcomed = await redis.get(welcomeKey);
         if (!welcomed) {
-          if (parseWelcomeOk(inbound)) {
-            await redis.set(welcomeKey, "1", "EX", WELCOME_KEY_TTL_SECONDS);
-            await sendConsentPrompt(toDigits, pendingStep);
-          } else {
-            await sendWhatsAppButtons(toDigits, consentConfig.welcome.message, [
-              { id: WELCOME_OK_ACTION_ID, title: consentConfig.welcome.buttons.ok },
-            ]);
-          }
+          await redis.set(welcomeKey, "1", "EX", WELCOME_KEY_TTL_SECONDS);
+          await sendWhatsAppButtons(toDigits, consentConfig.welcome.message, [
+            { id: WELCOME_OK_ACTION_ID, title: consentConfig.welcome.buttons.ok },
+          ]);
+          await sendConsentPrompt(toDigits, pendingStep, consentConfig.templates.blocked);
           sendJSON(res, 200, { ok: true });
           return;
         }
@@ -370,20 +377,28 @@ const server = http.createServer(async (req, res) => {
                 messageId: inbound.id ?? "unknown",
                 error: err instanceof Error ? err.message : String(err),
               });
-              await sendWhatsAppReply(toDigits, "Sorry—failed to start the report. Please try again.");
+              await sendWhatsAppReply(toDigits, "Sorry - failed to start the report. Please try again.");
             }
 
             sendJSON(res, 200, { ok: true });
             return;
           }
 
-          // Not a range selection: nudge to press a button for non-text messages.
-          // (For text messages, we allow normal storage, then intercept after persisting.)
-          if (inbound.type !== "text") {
-            await sendWhatsAppReply(toDigits, "Please press one of the report range buttons.");
+          if (actionId === SUMMARY_RANGE_CANCEL_ACTION_ID) {
+            await redis.del(promptKey);
+            await sendWhatsAppReply(toDigits, "Canceled the report request.");
             sendJSON(res, 200, { ok: true });
             return;
           }
+
+          await redis.expire(promptKey, SUMMARY_RANGE_PROMPT_TTL_SECONDS);
+          await sendWhatsAppReply(
+            toDigits,
+            "I can generate the report only after you press one of the range buttons."
+          );
+          await sendSummaryRangePrompts(toDigits);
+          sendJSON(res, 200, { ok: true });
+          return;
         }
       }
 
@@ -433,70 +448,6 @@ const server = http.createServer(async (req, res) => {
           rawPayload: inbound as object,
         },
       });
-
-      // If we're waiting for a summary-range button selection, do not process this text normally.
-      // Count non-button replies and default to 15 days after the second miss.
-      {
-        const redis = getRedis();
-        const promptKey = summaryRangePromptKey(user.id);
-        const hasPrompt = (await redis.exists(promptKey)) > 0;
-        if (hasPrompt) {
-          const attempts = await redis.incr(promptKey);
-          await redis.expire(promptKey, SUMMARY_RANGE_PROMPT_TTL_SECONDS);
-          if (attempts <= 1) {
-            await sendWhatsAppReply(
-              toDigits,
-              "Please choose the report range using the buttons: Last 7 days, Last 15 days, or Last 30 days."
-            );
-            sendJSON(res, 200, { ok: true });
-            return;
-          }
-
-          await redis.del(promptKey);
-
-          const lockKey = summaryLockKey(user.id);
-          const lockValue = JSON.stringify({
-            messageId: message.id,
-            createdAt: new Date().toISOString(),
-            range: SUMMARY_DEFAULT_RANGE,
-          });
-          const acquired = await redis.set(
-            lockKey,
-            lockValue,
-            "EX",
-            SUMMARY_LOCK_TTL_SECONDS,
-            "NX"
-          );
-          if (!acquired) {
-            await sendWhatsAppReply(toDigits, SUMMARY_ALREADY_RUNNING_TEXT);
-            sendJSON(res, 200, { ok: true });
-            return;
-          }
-
-          try {
-            await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, {
-              userId: user.id,
-              channelUserKey: toDigits,
-              range: SUMMARY_DEFAULT_RANGE,
-            });
-            await sendWhatsAppReply(
-              toDigits,
-              "No range selected. Using last 15 days by default and generating your report now."
-            );
-          } catch (err) {
-            await redis.del(lockKey);
-            logger.error("failed to enqueue default summary generation", {
-              userId: user.id,
-              messageId: message.id,
-              error: err instanceof Error ? err.message : String(err),
-            });
-            await sendWhatsAppReply(toDigits, "Sorry—failed to start the report. Please try again.");
-          }
-
-          sendJSON(res, 200, { ok: true });
-          return;
-        }
-      }
 
       if (command) {
         const mode = pendingBatch ? "busy_notice" : "command";

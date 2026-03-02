@@ -1,7 +1,7 @@
 welcome:
   version: "v1"
   message: |-
-    Welcome to SessionBridge.
+    Welcome to meCove.
 
     Send messages anytime—I'll help organize them and generate summaries.
 
@@ -30,6 +30,6 @@ mvp:
     later: "Later"
 
 templates:
-  blocked: "Before we continue, please complete this required consent step."
+  blocked: "Before we proceed, please take a moment to read this privacy/usage notice."
   later: "No problem. You can accept now or come back later."
-  completed: "Setup complete. Please resend your last message so I can process it."
+  completed: "I'm ready to listen and record your thoughts - let's go."

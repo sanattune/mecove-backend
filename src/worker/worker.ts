@@ -4,7 +4,6 @@ import { prisma } from "../infra/prisma";
 import { logger } from "../infra/logger";
 import { getRedis } from "../infra/redis";
 import {
-  summaryQueue,
   SUMMARY_QUEUE_NAME,
   JOB_NAME_GENERATE_SUMMARY,
   type GenerateSummaryPayload,
@@ -92,6 +91,16 @@ const SUMMARY_RANGE_BUTTONS: Array<{ id: string; title: string }> = [
   { id: "summary_range_15", title: "Last 15 days" },
   { id: "summary_range_30", title: "Last 30 days" },
 ];
+const SUMMARY_RANGE_CANCEL_ACTION_ID = "summary_range_cancel";
+const SUMMARY_RANGE_CANCEL_BUTTON: { id: string; title: string } = {
+  id: SUMMARY_RANGE_CANCEL_ACTION_ID,
+  title: "Cancel request",
+};
+
+async function sendSummaryRangePrompts(channelUserKey: string): Promise<void> {
+  await sendWhatsAppButtons(channelUserKey, SUMMARY_RANGE_PROMPT_TEXT, SUMMARY_RANGE_BUTTONS);
+  await sendWhatsAppButtons(channelUserKey, "Cancel:", [SUMMARY_RANGE_CANCEL_BUTTON]);
+}
 
 function summaryRangePromptKey(userId: string): string {
   return `summary:range_prompt:${SUMMARY_RANGE_PROMPT_KEY_VERSION}:${userId}`;
@@ -198,7 +207,7 @@ async function handleSummaryIntent(input: {
   }
 
   await redis.set(summaryRangePromptKey(input.userId), "0", "EX", SUMMARY_RANGE_PROMPT_TTL_SECONDS);
-  await sendWhatsAppButtons(input.channelUserKey, SUMMARY_RANGE_PROMPT_TEXT, SUMMARY_RANGE_BUTTONS);
+  await sendSummaryRangePrompts(input.channelUserKey);
   return { kind: "buttons", replyText: SUMMARY_RANGE_PROMPT_TEXT };
 }
 
