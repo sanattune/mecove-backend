@@ -64,7 +64,11 @@ export async function generateSummaryPipeline(
     const draftS2S3Started = Date.now();
     const draftS2S3 = await runJsonStage({
       stage: "L2A_WRITER_S2_S3",
-      prompt: buildWriterS2S3Prompt(canonical, windowBundle.section3AllowedByCounts),
+      prompt: buildWriterS2S3Prompt(
+        canonical,
+        windowBundle.section3AllowedByCounts,
+        windowBundle.window.days
+      ),
       maxTokens: 2200,
       validate: isDraftS2S3,
       complexity: 'high',
@@ -80,7 +84,7 @@ export async function generateSummaryPipeline(
     const draftS4Started = Date.now();
     const draftS4 = await runJsonStage({
       stage: "L2B_WRITER_S4",
-      prompt: buildWriterS4Prompt(canonical),
+      prompt: buildWriterS4Prompt(canonical, windowBundle.window.days),
       maxTokens: 3600,
       validate: isDraftS4,
       complexity: 'high',
@@ -100,7 +104,8 @@ export async function generateSummaryPipeline(
         canonical,
         draftS2S3,
         draftS4,
-        windowBundle.section3AllowedByCounts
+        windowBundle.section3AllowedByCounts,
+        windowBundle.window.days
       ),
       maxTokens: 3500,
       validate: isFinalSections,

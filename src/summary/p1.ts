@@ -5,10 +5,12 @@ import { logger } from "../infra/logger";
 
 export function assembleFinalReport(windowBundle: WindowBundle, finalSections: FinalSections): string {
   const parts: string[] = [];
-  parts.push("# SessionBridge 15-Day Summary");
+  parts.push(`# SessionBridge ${windowBundle.window.days}-Day Summary`);
   parts.push("");
   parts.push("## Section 1 - Time Window & Scope");
-  parts.push(`Window: ${windowBundle.window.startDate} to ${windowBundle.window.endDate} (last 15 calendar days, ${windowBundle.timezone})`);
+  parts.push(
+    `Window: ${windowBundle.window.startDate} to ${windowBundle.window.endDate} (last ${windowBundle.window.days} calendar days, ${windowBundle.timezone})`
+  );
   parts.push(`Days with entries: ${windowBundle.counts.daysWithEntries} of ${windowBundle.window.days}`);
   parts.push("Limits: This summary only reflects messages that were logged in this window.");
   parts.push("");
@@ -64,10 +66,10 @@ export async function buildMinimalFallbackReport(
   }
 
   const reportText = [
-    "# SessionBridge 15-Day Summary",
+    `# SessionBridge ${windowBundle.window.days}-Day Summary`,
     "",
     `## Section 1 - Time Window & Scope`,
-    `Window: ${windowBundle.window.startDate} to ${windowBundle.window.endDate} (last 15 calendar days, ${windowBundle.timezone})`,
+    `Window: ${windowBundle.window.startDate} to ${windowBundle.window.endDate} (last ${windowBundle.window.days} calendar days, ${windowBundle.timezone})`,
     `Days with entries: ${windowBundle.counts.daysWithEntries} of ${windowBundle.window.days}`,
     "Limits: This summary only reflects messages that were logged in this window.",
     "",
@@ -95,4 +97,3 @@ export async function buildMinimalFallbackReport(
     pdfBytes,
   };
 }
-

@@ -40,10 +40,15 @@ function buildInputHash(days: WindowDay[]): string {
 export async function buildWindowBundle(
   userId: string,
   timezone = "Asia/Kolkata",
-  now = new Date()
+  now = new Date(),
+  windowDays = 15
 ): Promise<WindowBundle> {
   const endDate = toIstDateString(now);
-  const startDate = shiftDate(endDate, -14);
+  const safeDays = Number.isFinite(windowDays) ? Math.floor(windowDays) : 15;
+  if (safeDays < 1) {
+    throw new Error(`Invalid window days: ${windowDays}`);
+  }
+  const startDate = shiftDate(endDate, -(safeDays - 1));
   const rangeStartUtc = istDateStartToUtc(startDate);
   const rangeEndExclusiveUtc = istDateStartToUtc(shiftDate(endDate, 1));
   const rangeEndUtc = new Date(rangeEndExclusiveUtc.getTime() - 1);
@@ -82,9 +87,9 @@ export async function buildWindowBundle(
     });
   }
 
-  const days = Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date));
-  const daysWithEntries = days.length;
-  const totalMessages = days.reduce((sum, d) => sum + d.messages.length, 0);
+  const windowDaysList = Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date));
+  const daysWithEntries = windowDaysList.length;
+  const totalMessages = windowDaysList.reduce((sum, d) => sum + d.messages.length, 0);
   const bucket = signalBucket(daysWithEntries);
 
   return {
@@ -93,7 +98,7 @@ export async function buildWindowBundle(
     window: {
       startDate,
       endDate,
-      days: 15,
+      days: safeDays,
     },
     rangeStartUtc: rangeStartUtc.toISOString(),
     rangeEndUtc: rangeEndUtc.toISOString(),
@@ -104,7 +109,7 @@ export async function buildWindowBundle(
     },
     signalBucket: bucket,
     section3AllowedByCounts: bucket !== "LOW",
-    inputHash: buildInputHash(days),
-    days,
+    inputHash: buildInputHash(windowDaysList),
+    days: windowDaysList,
   };
 }

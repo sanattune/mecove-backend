@@ -27,6 +27,7 @@ import {
 } from "../messages/testFeedback";
 import {
   sendWhatsAppBufferDocument,
+  sendWhatsAppButtons,
   sendWhatsAppDocument,
   sendWhatsAppReply,
   sendWhatsAppTypingIndicator,
@@ -68,8 +69,6 @@ if (!hasDatabaseUrl && !hasDatabaseParts) {
 }
 
 const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
-const SUMMARY_REQUEST_ACCEPTED_TEXT =
-  "I will generate a summary for past 15 days activity and send it to you in a bit. Please wait.";
 const SUMMARY_ALREADY_RUNNING_TEXT =
   "Your previous summary is still being generated. Please wait.";
 const SUMMARY_TIMEOUT_TEXT = "Summary generation timed out. Please request again.";
@@ -83,6 +82,19 @@ type BatchDueReason = "quiet" | "max_cap";
 
 function summaryLockKey(userId: string): string {
   return `summary:inflight:${userId}`;
+}
+
+const SUMMARY_RANGE_PROMPT_KEY_VERSION = "v1";
+const SUMMARY_RANGE_PROMPT_TTL_SECONDS = 10 * 60;
+const SUMMARY_RANGE_PROMPT_TEXT = "Report for:";
+const SUMMARY_RANGE_BUTTONS: Array<{ id: string; title: string }> = [
+  { id: "summary_range_7", title: "Last 7 days" },
+  { id: "summary_range_15", title: "Last 15 days" },
+  { id: "summary_range_30", title: "Last 30 days" },
+];
+
+function summaryRangePromptKey(userId: string): string {
+  return `summary:range_prompt:${SUMMARY_RANGE_PROMPT_KEY_VERSION}:${userId}`;
 }
 
 function parseCommand(messageText: string): string | null {
@@ -173,43 +185,21 @@ async function enqueueBatchFlush(userId: string, seq: number, delayMs: number): 
   );
 }
 
-async function applySummaryIntent(
-  userId: string,
-  messageId: string,
-  channelUserKey: string,
-  shouldGenerateSummary: boolean,
-  defaultReplyText: string
-): Promise<string> {
-  if (!shouldGenerateSummary) return defaultReplyText;
-
+async function handleSummaryIntent(input: {
+  userId: string;
+  channelUserKey: string;
+}): Promise<{ kind: "text"; replyText: string } | { kind: "buttons"; replyText: string }> {
   const redis = getRedis();
-  const lockKey = summaryLockKey(userId);
-  const lockValue = JSON.stringify({ messageId, createdAt: new Date().toISOString() });
-  const acquired = await redis.set(lockKey, lockValue, "EX", SUMMARY_LOCK_TTL_SECONDS, "NX");
-  if (!acquired) {
-    return SUMMARY_ALREADY_RUNNING_TEXT;
+
+  const lockKey = summaryLockKey(input.userId);
+  const inflight = await redis.get(lockKey);
+  if (inflight) {
+    return { kind: "text", replyText: SUMMARY_ALREADY_RUNNING_TEXT };
   }
 
-  try {
-    await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, {
-      userId,
-      channelUserKey,
-      range: "last_15_days",
-    });
-    logger.info("summary generation requested by user intent", {
-      userId,
-      messageId,
-    });
-    return SUMMARY_REQUEST_ACCEPTED_TEXT;
-  } catch (err) {
-    await redis.del(lockKey);
-    logger.error("failed to enqueue summary generation", {
-      userId,
-      messageId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return defaultReplyText;
-  }
+  await redis.set(summaryRangePromptKey(input.userId), "0", "EX", SUMMARY_RANGE_PROMPT_TTL_SECONDS);
+  await sendWhatsAppButtons(input.channelUserKey, SUMMARY_RANGE_PROMPT_TEXT, SUMMARY_RANGE_BUTTONS);
+  return { kind: "buttons", replyText: SUMMARY_RANGE_PROMPT_TEXT };
 }
 
 // Summary worker
@@ -218,7 +208,16 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
   async (job) => {
     if (job.name !== JOB_NAME_GENERATE_SUMMARY) return;
     const { userId, channelUserKey, range } = job.data;
-    if (range !== "last_15_days") return;
+
+    const windowDays =
+      range === "last_7_days"
+        ? 7
+        : range === "last_30_days"
+          ? 30
+          : range === "last_15_days"
+            ? 15
+            : null;
+    if (!windowDays) return;
 
     const redis = getRedis();
     const lockKey = summaryLockKey(userId);
@@ -226,7 +225,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
     let windowBundle: Awaited<ReturnType<typeof buildWindowBundle>> | null = null;
 
     try {
-      windowBundle = await buildWindowBundle(userId, "Asia/Kolkata");
+      windowBundle = await buildWindowBundle(userId, "Asia/Kolkata", new Date(), windowDays);
       const summary = await prisma.summary.create({
         data: {
           userId,
@@ -272,7 +271,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
       let fallbackSent = false;
       try {
         if (!windowBundle) {
-          windowBundle = await buildWindowBundle(userId, "Asia/Kolkata");
+          windowBundle = await buildWindowBundle(userId, "Asia/Kolkata", new Date(), windowDays);
         }
         const fallback = await buildMinimalFallbackReport(windowBundle);
         const fallbackFilename = `mecove-summary-${windowBundle.window.endDate}.pdf`;
@@ -409,7 +408,7 @@ const replyWorker = new Worker<GenerateReplyPayload>(
         prisma.summary.deleteMany({ where: { userId } }),
         prisma.message.deleteMany({ where: { userId } }),
       ]);
-      await getRedis().del(summaryLockKey(userId));
+      await getRedis().del(summaryLockKey(userId), summaryRangePromptKey(userId));
       await clearReplyBatchState(userId);
       await clearSummaryArtifactsForUser(userId);
       replyText = CHAT_CLEARED_TEXT;
@@ -530,16 +529,20 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
         logger.warn("LLM batch reply generation failed, using fallback", err);
       }
 
-      replyText = await applySummaryIntent(
-        userId,
-        claimedBatch.meta.latestMessageId,
-        claimedBatch.meta.channelUserKey,
-        shouldGenerateSummary,
-        replyText
-      );
-
-      await sendWhatsAppReply(claimedBatch.meta.channelUserKey, replyText);
-      replySent = true;
+      if (shouldGenerateSummary) {
+        const result = await handleSummaryIntent({
+          userId,
+          channelUserKey: claimedBatch.meta.channelUserKey,
+        });
+        replyText = result.replyText;
+        if (result.kind === "text") {
+          await sendWhatsAppReply(claimedBatch.meta.channelUserKey, replyText);
+        }
+        replySent = true;
+      } else {
+        await sendWhatsAppReply(claimedBatch.meta.channelUserKey, replyText);
+        replySent = true;
+      }
 
       const latestMessageId = messages.some((m) => m.id === claimedBatch?.meta.latestMessageId)
         ? claimedBatch.meta.latestMessageId

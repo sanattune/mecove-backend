@@ -7,7 +7,7 @@ export const JOB_NAME_GENERATE_SUMMARY = "generateSummary";
 export type GenerateSummaryPayload = {
   userId: string;
   channelUserKey: string;
-  range: "last_15_days";
+  range: "last_7_days" | "last_15_days" | "last_30_days";
 };
 
 export const summaryQueue = new Queue(SUMMARY_QUEUE_NAME, {

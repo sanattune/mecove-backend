@@ -1,14 +1,14 @@
 import type { CanonicalDoc, DraftS2S3, DraftS4, PromptVersions, WindowBundle } from "./types";
 
 export const PROMPT_VERSIONS: PromptVersions = {
-  canonicalizer: "canonicalizer_v1",
-  writerS2S3: "writer_s2_s3_v1",
-  writerS4: "writer_s4_v1",
-  guardfix: "guardfix_v1",
+  canonicalizer: "canonicalizer_v2",
+  writerS2S3: "writer_s2_s3_v2",
+  writerS4: "writer_s4_v2",
+  guardfix: "guardfix_v2",
 };
 
 export function buildCanonicalizerPrompt(windowBundle: WindowBundle): string {
-  return `You are a neutral canonicalizer for a 15-day user log summary pipeline.
+  return `You are a neutral canonicalizer for a ${windowBundle.window.days}-day user log summary pipeline.
 
 Return JSON only. No markdown. No commentary.
 
@@ -46,9 +46,10 @@ ${JSON.stringify(windowBundle)}`;
 
 export function buildWriterS2S3Prompt(
   canonical: CanonicalDoc,
-  section3AllowedByCounts: boolean
+  section3AllowedByCounts: boolean,
+  windowDays: number
 ): string {
-  return `You are generating Section 2 and Section 3 for a neutral 15-day summary report.
+  return `You are generating Section 2 and Section 3 for a neutral ${windowDays}-day summary report.
 
 Return JSON only. No markdown. No commentary.
 
@@ -79,8 +80,8 @@ Input canonical JSON:
 ${JSON.stringify(canonical)}`;
 }
 
-export function buildWriterS4Prompt(canonical: CanonicalDoc): string {
-  return `You are generating Section 4 (Logged Moments) for a neutral 15-day summary.
+export function buildWriterS4Prompt(canonical: CanonicalDoc, windowDays: number): string {
+  return `You are generating Section 4 (Logged Moments) for a neutral ${windowDays}-day summary.
 
 Return JSON only. No markdown. No commentary.
 
@@ -107,9 +108,10 @@ export function buildGuardfixPrompt(
   canonical: CanonicalDoc,
   draftS2S3: DraftS2S3,
   draftS4: DraftS4,
-  section3AllowedByCounts: boolean
+  section3AllowedByCounts: boolean,
+  windowDays: number
 ): string {
-  return `You are a strict compliance fixer for a neutral 15-day summary.
+  return `You are a strict compliance fixer for a neutral ${windowDays}-day summary.
 
 Return JSON only. No markdown. No commentary.
 
@@ -146,4 +148,3 @@ ${JSON.stringify(draftS2S3)}
 Input draft_s4 JSON:
 ${JSON.stringify(draftS4)}`;
 }
-

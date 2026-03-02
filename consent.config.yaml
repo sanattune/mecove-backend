@@ -1,3 +1,14 @@
+welcome:
+  version: "v1"
+  message: |-
+    Welcome to SessionBridge.
+
+    Send messages anytime—I'll help organize them and generate summaries.
+
+    Tap OK to review the privacy/usage notice and get started.
+  buttons:
+    ok: "OK"
+
 mvp:
   version: "v1"
   message: |-

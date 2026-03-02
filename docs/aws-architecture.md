@@ -1,73 +1,46 @@
-# AWS Architecture — meCove Backend (MVP)
+# AWS Architecture - meCove Backend (MVP)
 
-> Last updated: 2026-02-27
+> Last updated: 2026-02-28
 >
-> **Previous architecture** (ECS/Fargate + ALB + ElastiCache) was replaced with the simpler
-> EC2-based approach described here. See [`aws-mvp-setup-runbook.md`](./aws-mvp-setup-runbook.md)
-> for operational commands and setup details.
+> This document describes the current EC2-based MVP architecture. For step-by-step ops commands
+> (SSM access, log locations, deploy commands), see [`aws-mvp-setup-runbook.md`](./aws-mvp-setup-runbook.md).
 
-## Architecture diagram
+## Architecture diagram (high level)
 
 ```text
-                       Internet
-                          │
-                    HTTPS (443)
-                          │
-                   ┌──────▼──────┐
-                   │  Elastic IP │
-                   └──────┬──────┘
-                          │
-              ┌───────────▼───────────┐
-              │   EC2  (t4g.small)    │
-              │   Amazon Linux 2023   │
-              │   ARM64 / Graviton    │
-              │                       │
-              │  ┌─────────────────┐  │
-              │  │  Caddy (HTTPS)  │  │  ← auto Let's Encrypt cert
-              │  │  :443 → :3000   │  │
-              │  └────────┬────────┘  │
-              │           │           │
-              │  ┌────────▼────────┐  │
-              │  │  PM2 process    │  │
-              │  │  ┌────────────┐ │  │
-              │  │  │ API :3000  │ │  │  ← webhook handler
-              │  │  └────────────┘ │  │
-              │  │  ┌────────────┐ │  │
-              │  │  │  Worker    │ │  │  ← BullMQ jobs (LLM, PDF, WhatsApp)
-              │  │  └────────────┘ │  │
-              │  └────────┬────────┘  │
-              │           │           │
-              │  ┌────────▼────────┐  │
-              │  │  Redis 6 (local)│  │  ← BullMQ queues + batching
-              │  │  :6379          │  │
-              │  └─────────────────┘  │
-              │                       │
-              │  ┌─────────────────┐  │
-              │  │  Chromium       │  │  ← Puppeteer PDF generation
-              │  └─────────────────┘  │
-              └───────────┬───────────┘
-                          │
-               ┌──────────▼──────────┐
-               │  RDS PostgreSQL 16  │
-               │  db.t4g.micro       │
-               │  Port 5432          │
-               │  (private access)   │
-               └─────────────────────┘
-
-              External APIs (outbound HTTPS)
-              ├── Meta WhatsApp Business API
-              ├── OpenAI / Groq / Sarvam (LLM)
-              └── Sarvam (ASR)
+Internet (users, Meta WhatsApp)
+  |
+  | HTTPS :443  (api.mecove.com / api2.mecove.com)
+  v
+Elastic IP  --->  EC2 (Amazon Linux 2023, x86_64)
+                    |
+                    | Caddy (Auto-HTTPS, reverse_proxy -> localhost:3000)
+                    v
+                  Node.js (PM2)
+                    - api    (HTTP :3000) webhooks, health
+                    - worker (BullMQ) LLM + WhatsApp + PDF generation
+                    |
+                    +--> Redis 6 (local, :6379) queues/locks
+                    |
+                    +--> RDS Postgres 16 (private, :5432)
 ```
 
 ## Region & account
 
-| Item              | Value                          |
-|-------------------|--------------------------------|
-| AWS Region        | `ap-south-1` (Mumbai)          |
-| AWS Account ID    | `498735610795`                 |
-| Terraform state   | `s3://mecove-tfstate-498735610795/mvp/terraform.tfstate` |
-| Domain            | `api.mecove.com`               |
+| Item            | Value |
+|-----------------|-------|
+| AWS Region      | `ap-south-1` (Mumbai) |
+| AWS Account ID  | `498735610795` |
+| Terraform state | `s3://mecove-tfstate-498735610795/mvp/terraform.tfstate` |
+
+## DNS & domains
+
+- Primary API hostname: `api.mecove.com`
+- Fallback hostname: `api2.mecove.com`
+
+`api2.mecove.com` exists to keep deploys unblocked if Let's Encrypt rate-limits repeated certificate
+issuance for `api.mecove.com` during frequent instance rebuilds. Both hostnames can point to the same
+Elastic IP and reverse proxy to the same app.
 
 ## Component details
 
@@ -75,71 +48,85 @@
 
 - **VPC CIDR:** `10.0.0.0/16`
 - **Subnets:** 2 public subnets across 2 AZs (`10.0.0.0/24`, `10.0.1.0/24`)
-- **NAT Gateway:** None (EC2 has a public IP via Elastic IP)
-- **DNS:** hostnames + support enabled
-- **Module:** `terraform-aws-modules/vpc/aws` v5.0
+- **NAT Gateway:** none (the instance has an Elastic IP)
 
-### Compute — EC2
+### Compute - EC2
 
-| Setting           | Value                                      |
-|-------------------|--------------------------------------------|
-| Instance type     | `t4g.small` (2 vCPU, 2 GB, ARM/Graviton)  |
-| AMI               | Amazon Linux 2023 ARM64 (latest SSM param) |
-| Storage           | 30 GB gp3 (encrypted)                      |
-| Public IP         | Elastic IP (stable for DNS A record)       |
-| SSH key           | ED25519, generated by Terraform            |
+| Setting       | Value |
+|--------------|-------|
+| Instance     | Amazon Linux 2023 (x86_64) |
+| Instance type| `t3.small` |
+| Storage      | 30 GB gp3 (encrypted) |
+| Public IP    | Elastic IP (stable for DNS A records) |
+| Access       | AWS SSM Session Manager (no public SSH) |
 
-### Reverse proxy — Caddy
+### Reverse proxy - Caddy
 
-- Installed on the EC2 instance via `user_data`
-- Listens on `:443`, reverse-proxies to `localhost:3000`
-- Automatically provisions a Let's Encrypt TLS certificate for `api.mecove.com`
-- Access logs written to `/var/log/caddy/access.log`
+- Installed on the instance by `infra/terraform/user_data.sh.tpl`.
+- Terminates TLS and reverse-proxies to `localhost:3000`.
+- Uses Let's Encrypt for certificates; cert data is stored under `/var/lib/caddy`.
+- Access logs are written to `/var/log/caddy/access.log` (also shipped to CloudWatch).
 
-### Application — PM2
+### Application - Node.js + PM2
 
 Two Node.js processes managed by PM2:
 
-| Process  | Entry point              | Description                                      |
-|----------|--------------------------|--------------------------------------------------|
-| `api`    | `dist/api/server.js`     | HTTP server (:3000) — webhook handler, health     |
-| `worker` | `dist/worker/worker.js`  | BullMQ worker — LLM replies, summaries, PDF, send |
+| Process  | Entry point             | Purpose |
+|----------|--------------------------|---------|
+| `api`    | `dist/api/server.js`     | Webhook handler + HTTP API (`:3000`) |
+| `worker` | `dist/worker/worker.js`  | BullMQ worker (LLM, WhatsApp, summaries, PDF) |
 
-- Source maps enabled for error tracing
-- PM2 configured for auto-restart on reboot (`pm2 startup` + `pm2 save`)
-- Logs at `/home/mecove/logs/{api,worker}-{out,error}.log`
+Runtime notes:
+- Node.js 20 + pnpm via Corepack.
+- PM2 is configured to restart on reboot (`pm2 startup` + `pm2 save`).
+- Logs live at `/home/mecove/logs/{api,worker}-{out,err}.log`.
 
-### Database — RDS PostgreSQL
+### Cache - Redis (local)
 
-| Setting              | Value                       |
-|----------------------|-----------------------------|
-| Engine               | PostgreSQL 16               |
-| Instance class       | `db.t4g.micro`              |
-| Storage              | 20 GB gp3 (encrypted)      |
-| Database name        | `mecove`                    |
-| Master user          | `mecove`                    |
-| Master password      | AWS Secrets Manager (auto)  |
-| Multi-AZ             | No                          |
-| Backups              | Disabled (MVP)              |
-| Deletion protection  | Disabled (MVP)              |
-| Network access       | EC2 security group only     |
+- Redis 6 runs locally on EC2 (`localhost:6379`) as a systemd service.
+- Used for BullMQ queues + batching/locks.
+- No persistence/replication (acceptable for MVP; jobs can be retried).
 
-### Cache — Redis (local)
+### Database - RDS PostgreSQL
 
-- Redis 6 installed directly on EC2 via DNF
-- Runs as a systemd service on `localhost:6379`
-- Used for BullMQ queues and reply batching state/locks
-- No persistence or replication (MVP-appropriate)
+| Setting             | Value |
+|---------------------|-------|
+| Engine              | PostgreSQL 16 |
+| Instance class      | `db.t4g.micro` |
+| Storage             | 20 GB gp3 (encrypted) |
+| DB name             | `mecove` |
+| Master user         | `mecove` |
+| Master password     | AWS Secrets Manager (managed by RDS) |
+| Multi-AZ            | No |
+| Backups             | Configurable (`rds_backup_retention_period`); currently `0` |
+| Network access      | Only from the EC2 security group |
 
-### Logging — CloudWatch
+**TLS/Prisma note (important):** RDS requires TLS. The app uses:
+- `DATABASE_URL=...?...sslmode=require&uselibpqcompat=true`
+- `DB_USELIBPQCOMPAT=true`
 
-| Log group                   | Source                       | Retention |
-|-----------------------------|------------------------------|-----------|
-| `/ec2/mecove-mvp/api`       | PM2 API stdout/stderr        | 14 days   |
-| `/ec2/mecove-mvp/worker`    | PM2 Worker stdout/stderr     | 14 days   |
-| `/ec2/mecove-mvp/caddy`     | Caddy access logs            | 14 days   |
+### PDF generation - Puppeteer (worker)
 
-CloudWatch agent configured via `user_data` to stream logs from PM2 and Caddy.
+The worker generates PDFs from HTML using Puppeteer.
+
+On `x86_64`, `deploy.sh` ensures a browser exists by running:
+
+```bash
+pnpm exec puppeteer browsers install chrome
+```
+
+This downloads Chrome for Testing under `/home/mecove/.cache/puppeteer`.
+
+## Observability
+
+### CloudWatch logs
+
+CloudWatch Agent ships these files:
+- `/home/mecove/logs/api-out.log` and `/home/mecove/logs/api-err.log` -> `/ec2/mecove-mvp/api`
+- `/home/mecove/logs/worker-out.log` and `/home/mecove/logs/worker-err.log` -> `/ec2/mecove-mvp/worker`
+- `/var/log/caddy/access.log` -> `/ec2/mecove-mvp/caddy`
+
+Retention is set to 3 days to keep costs low.
 
 ## Security
 
@@ -147,39 +134,29 @@ CloudWatch agent configured via `user_data` to stream logs from PM2 and Caddy.
 
 **EC2 security group** (`mecove-mvp-ec2`):
 
-| Direction | Port  | Source/Dest       | Purpose            |
-|-----------|-------|-------------------|--------------------|
-| Inbound   | 80    | `0.0.0.0/0`      | HTTP (Caddy redirect) |
-| Inbound   | 443   | `0.0.0.0/0`      | HTTPS (Caddy)      |
-| Inbound   | 22    | configurable CIDRs| SSH access          |
-| Outbound  | all   | `0.0.0.0/0`      | Internet access     |
+| Direction | Port | Source/Dest  | Purpose |
+|----------:|-----:|--------------|---------|
+| Inbound   | 80   | `0.0.0.0/0`  | HTTP (redirect to HTTPS) |
+| Inbound   | 443  | `0.0.0.0/0`  | HTTPS |
+| Outbound  | all  | `0.0.0.0/0`  | Outbound HTTPS to external APIs, package repos, etc. |
 
 **RDS security group** (`mecove-mvp-rds`):
 
-| Direction | Port  | Source            | Purpose            |
-|-----------|-------|-------------------|--------------------|
-| Inbound   | 5432  | EC2 SG            | PostgreSQL access   |
+| Direction | Port | Source   | Purpose |
+|----------:|-----:|----------|---------|
+| Inbound   | 5432 | EC2 SG   | PostgreSQL access |
 
 ### Secrets management
 
-| Secret                        | Contents                                    |
-|-------------------------------|---------------------------------------------|
-| RDS master password           | Auto-managed by RDS via Secrets Manager     |
-| App secrets (`app_secrets_arn`)| WhatsApp tokens, LLM API keys              |
-| GitHub deploy key             | ED25519 SSH key for private repo cloning    |
+- App secrets (WhatsApp tokens, LLM keys) are stored in AWS Secrets Manager and rendered into `/home/mecove/app/.env` by `/home/mecove/load-env.sh`.
+- GitHub deploy key is stored in Secrets Manager and used for repo cloning.
 
 ### IAM
 
-EC2 instance profile with least-privilege policies:
-- **SSM:** `AmazonSSMManagedInstanceCore` (EC2 Instance Connect)
-- **Secrets Manager:** read-only access to DB password, app secrets, deploy key
-- **CloudWatch Logs:** write access to the 3 log groups
-
-### Encryption
-
-- EBS volume: encrypted at rest
-- RDS storage: encrypted at rest
-- HTTPS: Let's Encrypt via Caddy (in-transit)
+The instance profile includes least-privilege access for:
+- SSM (Session Manager)
+- Secrets Manager (read secrets needed for deploy/runtime)
+- CloudWatch Logs (write to log groups)
 
 ## Deployment
 
@@ -192,65 +169,25 @@ terraform plan
 terraform apply
 ```
 
-The `user_data` script runs automatically on first boot and handles the full 11-step bootstrap (system packages → Node.js → Caddy → app user → deploy key → git clone → env setup → build → migrations → PM2 → CloudWatch agent).
+`user_data` performs the full bootstrap (packages, Node, Caddy, app clone, env, build, migrations, PM2, CloudWatch agent).
 
 ### Subsequent deploys
 
-SSH into the instance and run the deploy script:
+From an SSM session on the instance:
 
 ```bash
-ssh -i mecove-mvp.pem ec2-user@<ELASTIC_IP> "sudo -u mecove /home/mecove/deploy.sh"
+sudo -u mecove /home/mecove/deploy.sh
 ```
-
-The deploy script:
-1. `git pull` latest changes
-2. `pnpm install --frozen-lockfile`
-3. `pnpm build`
-4. Re-load secrets from Secrets Manager → regenerate `.env`
-5. `npx prisma migrate deploy`
-6. `pm2 restart all`
 
 ### Terraform outputs
 
-| Output               | Description                              |
-|----------------------|------------------------------------------|
-| `elastic_ip`         | Public IP for DNS A record               |
-| `instance_id`        | EC2 instance ID                          |
-| `ssh_command`        | Ready-to-use SSH command                 |
-| `deploy_command`     | Ready-to-use deploy trigger command      |
-| `ssh_private_key`    | Generated ED25519 key (sensitive)        |
-| `rds_endpoint`       | PostgreSQL hostname                      |
-| `rds_port`           | PostgreSQL port (5432)                   |
-| `rds_master_secret_arn` | Secrets Manager ARN for DB password   |
+| Output | Description |
+|--------|-------------|
+| `elastic_ip` | Public IP for DNS A record |
+| `instance_id` | EC2 instance ID |
+| `ssm_start_session_command` | Start an interactive SSM session |
+| `ssm_deploy_command` | Trigger `deploy.sh` via SSM (non-interactive) |
 
-## Cost profile (MVP)
+## Notes / gotchas
 
-| Resource          | Approx. monthly cost |
-|-------------------|---------------------|
-| EC2 t4g.small     | ~$12 (on-demand)    |
-| RDS db.t4g.micro  | ~$12 (on-demand)    |
-| Elastic IP        | $3.65               |
-| EBS 30 GB gp3     | ~$2.40              |
-| CloudWatch Logs   | minimal             |
-| **Total estimate**| **~$30/month**      |
-
-> Redis runs locally on EC2 at no additional cost.
-> No NAT Gateway, no ALB, no ElastiCache — keeps costs minimal for MVP.
-
-## Why EC2 over ECS/Fargate (decision context)
-
-The original architecture used ECS Fargate + ALB + ElastiCache Redis. It was replaced with this simpler EC2 setup because:
-
-1. **Cost:** ECS + ALB + ElastiCache + NAT Gateway was ~$100+/month; EC2 approach is ~$30/month
-2. **Simplicity:** Single instance with PM2 is easier to debug and deploy for MVP
-3. **Redis local:** Eliminates ElastiCache cost and TLS/networking complexity
-4. **Caddy:** Auto-TLS replaces ALB + ACM certificate management
-5. **Appropriate for scale:** MVP traffic is low; single instance is sufficient
-
-## Future considerations
-
-- **Scaling:** If traffic grows, consider moving back to ECS/Fargate or adding a load balancer
-- **HA:** Currently single-AZ, single-instance; no redundancy
-- **Backups:** RDS backups are disabled; enable `backup_retention_period` before storing real user data
-- **Redis persistence:** Local Redis has no persistence; acceptable for BullMQ (jobs are retried) but evaluate if state loss is problematic
-- **SSH hardening:** Default allows SSH from `0.0.0.0/0`; restrict `ssh_allowed_cidrs` in production
+- **Let's Encrypt rate limits:** Frequent instance rebuilds can trigger duplicate certificate rate limits for a hostname (e.g. `api.mecove.com`). If that blocks HTTPS, use a fallback hostname (e.g. `api2.mecove.com`) pointing to the same Elastic IP, or persist Caddy's data directory so certificates survive rebuilds.

@@ -9,6 +9,7 @@ import {
 } from "../consent/state";
 import { logger } from "../infra/logger";
 import { prisma } from "../infra/prisma";
+import { getRedis } from "../infra/redis";
 import { sendWhatsAppButtons, sendWhatsAppReply } from "../infra/whatsapp";
 import {
   parseTestFeedbackCommand,
@@ -107,6 +108,61 @@ function parseCommand(messageText: string): string | null {
   const trimmed = messageText.trim();
   if (!trimmed.startsWith("/")) return null;
   return trimmed.split(/\s+/)[0].toLowerCase();
+}
+
+const WELCOME_OK_ACTION_ID = "welcome_ok";
+const WELCOME_KEY_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+const SUMMARY_RANGE_PROMPT_KEY_VERSION = "v1";
+const SUMMARY_RANGE_PROMPT_TTL_SECONDS = 10 * 60;
+const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
+const SUMMARY_ALREADY_RUNNING_TEXT =
+  "Your previous summary is still being generated. Please wait.";
+const SUMMARY_DEFAULT_RANGE: GenerateSummaryPayload["range"] = "last_15_days";
+
+const SUMMARY_RANGE_ACTION_IDS: Record<string, GenerateSummaryPayload["range"]> = {
+  summary_range_7: "last_7_days",
+  summary_range_15: "last_15_days",
+  summary_range_30: "last_30_days",
+};
+
+function summaryRangePromptKey(userId: string): string {
+  return `summary:range_prompt:${SUMMARY_RANGE_PROMPT_KEY_VERSION}:${userId}`;
+}
+
+function summaryLockKey(userId: string): string {
+  return `summary:inflight:${userId}`;
+}
+
+function extractInboundActionId(inbound: WhatsAppMessageNode): string | null {
+  const interactiveId = inbound.interactive?.button_reply?.id?.trim().toLowerCase() ?? "";
+  if (interactiveId) return interactiveId;
+  const buttonPayload = inbound.button?.payload?.trim().toLowerCase() ?? "";
+  if (buttonPayload) return buttonPayload;
+  return null;
+}
+
+function normalizeInboundText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function parseWelcomeOk(inbound: WhatsAppMessageNode): boolean {
+  const interactiveId = inbound.interactive?.button_reply?.id?.trim().toLowerCase() ?? "";
+  if (interactiveId === WELCOME_OK_ACTION_ID) return true;
+
+  const buttonPayload = inbound.button?.payload?.trim().toLowerCase() ?? "";
+  if (buttonPayload === WELCOME_OK_ACTION_ID) return true;
+
+  const textBody = inbound.text?.body;
+  if (!textBody) return false;
+  const normalized = normalizeInboundText(textBody);
+  return normalized === "ok" || normalized === "okay";
+}
+
+function summaryRangeToDays(range: GenerateSummaryPayload["range"]): number {
+  if (range === "last_7_days") return 7;
+  if (range === "last_30_days") return 30;
+  return 15;
 }
 
 function buildConsentPromptBody(step: ConsentStep, preface?: string): string {
@@ -228,6 +284,22 @@ const server = http.createServer(async (req, res) => {
       const user = identity.user;
       const pendingStep = getPendingConsentStep(user, consentConfig);
       if (pendingStep !== null) {
+        const redis = getRedis();
+        const welcomeKey = `onboarding:welcome:${consentConfig.welcome.version}:${user.id}`;
+        const welcomed = await redis.get(welcomeKey);
+        if (!welcomed) {
+          if (parseWelcomeOk(inbound)) {
+            await redis.set(welcomeKey, "1", "EX", WELCOME_KEY_TTL_SECONDS);
+            await sendConsentPrompt(toDigits, pendingStep);
+          } else {
+            await sendWhatsAppButtons(toDigits, consentConfig.welcome.message, [
+              { id: WELCOME_OK_ACTION_ID, title: consentConfig.welcome.buttons.ok },
+            ]);
+          }
+          sendJSON(res, 200, { ok: true });
+          return;
+        }
+
         const action = parseConsentAction(inbound);
         if (action?.type === "accept" && action.step === pendingStep) {
           const updatedUser = await prisma.user.update(
@@ -248,6 +320,71 @@ const server = http.createServer(async (req, res) => {
         }
         sendJSON(res, 200, { ok: true });
         return;
+      }
+
+      // Summary range selection gate (only when consent is complete).
+      // If the user previously requested a summary, we ask them to pick a range via buttons.
+      {
+        const redis = getRedis();
+        const promptKey = summaryRangePromptKey(user.id);
+        const hasPrompt = (await redis.exists(promptKey)) > 0;
+        if (hasPrompt) {
+          const actionId = extractInboundActionId(inbound);
+          const selectedRange = actionId ? SUMMARY_RANGE_ACTION_IDS[actionId] : undefined;
+          if (selectedRange) {
+            await redis.del(promptKey);
+
+            const lockKey = summaryLockKey(user.id);
+            const lockValue = JSON.stringify({
+              messageId: inbound.id ?? "unknown",
+              createdAt: new Date().toISOString(),
+              range: selectedRange,
+            });
+            const acquired = await redis.set(
+              lockKey,
+              lockValue,
+              "EX",
+              SUMMARY_LOCK_TTL_SECONDS,
+              "NX"
+            );
+            if (!acquired) {
+              await sendWhatsAppReply(toDigits, SUMMARY_ALREADY_RUNNING_TEXT);
+              sendJSON(res, 200, { ok: true });
+              return;
+            }
+
+            try {
+              await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, {
+                userId: user.id,
+                channelUserKey: toDigits,
+                range: selectedRange,
+              });
+              await sendWhatsAppReply(
+                toDigits,
+                `Generating your report for the last ${summaryRangeToDays(selectedRange)} days. Please wait.`
+              );
+            } catch (err) {
+              await redis.del(lockKey);
+              logger.error("failed to enqueue summary generation", {
+                userId: user.id,
+                messageId: inbound.id ?? "unknown",
+                error: err instanceof Error ? err.message : String(err),
+              });
+              await sendWhatsAppReply(toDigits, "Sorry—failed to start the report. Please try again.");
+            }
+
+            sendJSON(res, 200, { ok: true });
+            return;
+          }
+
+          // Not a range selection: nudge to press a button for non-text messages.
+          // (For text messages, we allow normal storage, then intercept after persisting.)
+          if (inbound.type !== "text") {
+            await sendWhatsAppReply(toDigits, "Please press one of the report range buttons.");
+            sendJSON(res, 200, { ok: true });
+            return;
+          }
+        }
       }
 
       // Continue normal processing only for text messages once consent is complete.
@@ -296,6 +433,70 @@ const server = http.createServer(async (req, res) => {
           rawPayload: inbound as object,
         },
       });
+
+      // If we're waiting for a summary-range button selection, do not process this text normally.
+      // Count non-button replies and default to 15 days after the second miss.
+      {
+        const redis = getRedis();
+        const promptKey = summaryRangePromptKey(user.id);
+        const hasPrompt = (await redis.exists(promptKey)) > 0;
+        if (hasPrompt) {
+          const attempts = await redis.incr(promptKey);
+          await redis.expire(promptKey, SUMMARY_RANGE_PROMPT_TTL_SECONDS);
+          if (attempts <= 1) {
+            await sendWhatsAppReply(
+              toDigits,
+              "Please choose the report range using the buttons: Last 7 days, Last 15 days, or Last 30 days."
+            );
+            sendJSON(res, 200, { ok: true });
+            return;
+          }
+
+          await redis.del(promptKey);
+
+          const lockKey = summaryLockKey(user.id);
+          const lockValue = JSON.stringify({
+            messageId: message.id,
+            createdAt: new Date().toISOString(),
+            range: SUMMARY_DEFAULT_RANGE,
+          });
+          const acquired = await redis.set(
+            lockKey,
+            lockValue,
+            "EX",
+            SUMMARY_LOCK_TTL_SECONDS,
+            "NX"
+          );
+          if (!acquired) {
+            await sendWhatsAppReply(toDigits, SUMMARY_ALREADY_RUNNING_TEXT);
+            sendJSON(res, 200, { ok: true });
+            return;
+          }
+
+          try {
+            await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, {
+              userId: user.id,
+              channelUserKey: toDigits,
+              range: SUMMARY_DEFAULT_RANGE,
+            });
+            await sendWhatsAppReply(
+              toDigits,
+              "No range selected. Using last 15 days by default and generating your report now."
+            );
+          } catch (err) {
+            await redis.del(lockKey);
+            logger.error("failed to enqueue default summary generation", {
+              userId: user.id,
+              messageId: message.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            await sendWhatsAppReply(toDigits, "Sorry—failed to start the report. Please try again.");
+          }
+
+          sendJSON(res, 200, { ok: true });
+          return;
+        }
+      }
 
       if (command) {
         const mode = pendingBatch ? "busy_notice" : "command";

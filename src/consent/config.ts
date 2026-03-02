@@ -14,7 +14,16 @@ export type ConsentStepConfig = {
   };
 };
 
+export type WelcomeConfig = {
+  version: string;
+  message: string;
+  buttons: {
+    ok: string;
+  };
+};
+
 export type ConsentConfig = {
+  welcome: WelcomeConfig;
   mvp: ConsentStepConfig;
   templates: {
     blocked: string;
@@ -65,6 +74,24 @@ function parseStepConfig(raw: unknown, step: ConsentStep): ConsentStepConfig {
   };
 }
 
+function parseWelcomeConfig(raw: unknown): WelcomeConfig {
+  if (!raw || typeof raw !== "object") {
+    throw new Error('Invalid consent config: "welcome" section is required');
+  }
+  const section = raw as Record<string, unknown>;
+  const buttons = section.buttons as Record<string, unknown> | undefined;
+  if (!buttons || typeof buttons !== "object") {
+    throw new Error('Invalid consent config: "welcome.buttons" section is required');
+  }
+  return {
+    version: asNonEmptyString(section.version, "welcome.version"),
+    message: asNonEmptyString(section.message, "welcome.message"),
+    buttons: {
+      ok: validateButtonLabel(buttons.ok, "welcome.buttons.ok"),
+    },
+  };
+}
+
 function parseConsentConfig(raw: unknown): ConsentConfig {
   if (!raw || typeof raw !== "object") {
     throw new Error("Invalid consent config: expected top-level object");
@@ -75,6 +102,7 @@ function parseConsentConfig(raw: unknown): ConsentConfig {
     throw new Error('Invalid consent config: "templates" section is required');
   }
   return {
+    welcome: parseWelcomeConfig(root.welcome),
     mvp: parseStepConfig(root.mvp, "mvp"),
     templates: {
       blocked: asNonEmptyString(templates.blocked, "templates.blocked"),
