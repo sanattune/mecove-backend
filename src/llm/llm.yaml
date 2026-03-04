@@ -52,6 +52,7 @@ providers:
         tasks: [text_generation, summarization]
         cost_per_1m_tokens: 0.10
         max_tokens: 16384
+        temperature: 1.0
         
       # Balanced model for medium complexity (e.g. L1 canonicalizer)
       - name: gpt-4o

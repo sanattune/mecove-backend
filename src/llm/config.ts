@@ -10,6 +10,7 @@ type RawModel = {
   tasks?: string[];
   cost_per_1m_tokens?: number;
   max_tokens: number;
+  temperature?: number;
 };
 
 type RawProvider = {
@@ -100,6 +101,7 @@ export function loadLLMConfigForTask(
           modelName: model.name,
           apiKey,
           maxTokens: model.max_tokens ?? 4096,
+          temperature: model.temperature,
         };
       }
     }
@@ -111,6 +113,7 @@ export function loadLLMConfigForTask(
         modelName: models[0].name,
         apiKey,
         maxTokens: models[0].max_tokens ?? 4096,
+        temperature: models[0].temperature,
       };
     }
   }

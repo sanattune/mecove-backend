@@ -19,24 +19,26 @@ export class LlmViaApi implements ILLMService {
   }
 
   async complete(options: CompleteOptions): Promise<string> {
-    const { prompt, maxTokens, complexity, reasoning } = options;
-    
+    const { prompt, maxTokens, complexity, reasoning, temperature } = options;
+
     // Select model dynamically based on task requirements
     const config = complexity !== undefined || reasoning !== undefined
       ? loadLLMConfigForTask({ complexity, reasoning })
       : this.defaultConfig;
-    
+
     const { provider, modelName, apiKey, maxTokens: configMax } = config;
     const max = maxTokens ?? configMax;
+    // Prefer caller-specified temperature, then YAML config, then undefined (provider default)
+    const temp = temperature ?? config.temperature;
 
     if (provider === "groq") {
-      return this.groqComplete(modelName, apiKey, prompt, max);
+      return this.groqComplete(modelName, apiKey, prompt, max, temp);
     }
     if (provider === "openai") {
-      return this.openaiComplete(modelName, apiKey, prompt, max);
+      return this.openaiComplete(modelName, apiKey, prompt, max, temp);
     }
     if (provider === "sarvam") {
-      return this.sarvamComplete(modelName, apiKey, prompt, max);
+      return this.sarvamComplete(modelName, apiKey, prompt, max, temp);
     }
     throw new Error(`Unsupported LLM provider: ${provider}`);
   }
@@ -45,21 +47,24 @@ export class LlmViaApi implements ILLMService {
     model: string,
     apiKey: string,
     prompt: string,
-    maxTokens: number
+    maxTokens: number,
+    temperature?: number
   ): Promise<string> {
     const callGroq = async (tokens: number) => {
       const url = `${GROQ_BASE}/chat/completions`;
+      const body: Record<string, unknown> = {
+        model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: tokens,
+      };
+      if (temperature !== undefined) body.temperature = temperature;
       const res = await fetch(url, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: tokens,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -142,21 +147,24 @@ export class LlmViaApi implements ILLMService {
     model: string,
     apiKey: string,
     prompt: string,
-    maxTokens: number
+    maxTokens: number,
+    temperature?: number
   ): Promise<string> {
     const callOpenAI = async (tokens: number) => {
       const url = `${OPENAI_BASE}/chat/completions`;
+      const body: Record<string, unknown> = {
+        model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: tokens,
+      };
+      if (temperature !== undefined) body.temperature = temperature;
       const res = await fetch(url, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: tokens,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -238,20 +246,23 @@ export class LlmViaApi implements ILLMService {
     model: string,
     apiKey: string,
     prompt: string,
-    maxTokens: number
+    maxTokens: number,
+    temperature?: number
   ): Promise<string> {
     const url = `${SARVAM_BASE}/chat/completions`;
+    const body: Record<string, unknown> = {
+      model,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens,
+    };
+    if (temperature !== undefined) body.temperature = temperature;
     const res = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const text = await res.text();
