@@ -1,10 +1,10 @@
 import type { CanonicalDoc, DraftS2S3, DraftS4, PromptVersions, WindowBundle } from "./types";
 
 export const PROMPT_VERSIONS: PromptVersions = {
-  canonicalizer: "canonicalizer_v2",
-  writerS2S3: "writer_s2_s3_v2",
-  writerS4: "writer_s4_v2",
-  guardfix: "guardfix_v2",
+  canonicalizer: "canonicalizer_v3",
+  writerS2S3: "writer_s2_s3_v3",
+  writerS4: "writer_s4_v3",
+  guardfix: "guardfix_v3",
 };
 
 export function buildCanonicalizerPrompt(windowBundle: WindowBundle): string {
@@ -33,7 +33,7 @@ Output schema (exact keys, camelCase):
 
 Rules:
 - Use only provided user logs. Do not invent facts.
-- Ignore messages that are solely requests for a summary or report (e.g. "generate my summary", "I want my report", "send report", "give me my summary"). Do not extract facts from them; exclude them from topic sentence and facts for that day.
+- Ignore messages that are solely requests for a summary or report (e.g. "generate my summary", "I want my report", "send report", "give me my summary", "show me my recap", "can you summarize", "regenerate", "send my report", "I need my summary"). If a message is primarily a request for a report/summary with no other journaling content, exclude it entirely. Do not extract facts from them; exclude them from topic sentence and facts for that day.
 - No advice, no interpretation, no causality.
 - Every fact must include sourceSnippet.
 - Topic sentence must be descriptive and neutral.
@@ -61,7 +61,7 @@ Output schema (exact keys):
 }
 
 Rules:
-- Use only canonical facts provided. Do not mention or reflect summary/report requests in the report.
+- Use only canonical facts provided. Do NOT reference, quote, or acknowledge any summary/report requests in the output.
 - Section 2 (Observed Patterns and Limits):
   - bullet-style lines about repeated elements (if any)
   - MUST include one line that begins with "Limits:" followed by at least one sentence (e.g. "Limits: Based on N logged days. [Brief note on data scope or why patterns are/are not meaningful.]"). Never leave the Limits line empty or without explanation.
@@ -94,7 +94,7 @@ Output schema (exact keys):
 
 Rules:
 - One object per calendar day that has entries in canonical.perDay. Order by date (earliest first).
-- Ignore summary/report requests: do not include them in content. Use only substantive log content from canonical.
+- Ignore summary/report requests: do not include them in content. Do NOT reference, quote, or acknowledge any summary/report/recap generation requests. Use only substantive log content from canonical.
 - dateLabel: Short, human-readable date for the report. Use format like "March seven", "March thirteen", or "7 Mar 2026". Derive from the day's date in canonical.perDay[].date (YYYY-MM-DD).
 - content: One or two neutral sentences summarizing that day. Use canonical.perDay[].topicSentenceSeed and canonical.perDay[].facts. Preserve all distinct factual points. Include emotions only if explicitly in canonical. Preserve numeric values exactly.
 - No advice, no inference, no invention. Coverage-first: do not drop distinct facts for brevity.
@@ -133,7 +133,7 @@ Responsibilities:
 - Ensure Section 3 is statements only (no questions), 1-3 lines if included.
 - If section3AllowedByCounts=false OR reflection not defensible, remove Section 3.
 - Preserve Section 4 as array of { dateLabel, content }. Do not add new facts; fix only compliance issues.
-- Remove any mention of summary or report requests from Section 4 content.
+- Remove any references to summary generation requests, report requests, or recap requests from all sections.
 - Keep output neutral and structured.
 
 Input section3AllowedByCounts:

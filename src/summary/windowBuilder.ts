@@ -61,6 +61,7 @@ export async function buildWindowBundle(
         lt: rangeEndExclusiveUtc,
       },
       text: { not: null },
+      category: "user_message",
     },
     orderBy: { createdAt: "asc" },
     select: {

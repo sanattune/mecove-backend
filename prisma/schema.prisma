@@ -50,6 +50,7 @@ model Message {
   text            String?   @db.Text
   rawPayload      Json?
   sourceMessageId String
+  category        String?
   repliedAt       DateTime?
   replyText       String?   @db.Text
 

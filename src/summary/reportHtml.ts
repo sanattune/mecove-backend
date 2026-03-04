@@ -31,7 +31,7 @@ function textToParagraphsHtml(text: string): string {
  * Matches org template: first block uses container-45/46, text-47, paragraph-48, text-49;
  * second and alternating use container-50/51, text-52, paragraph-53, text-54.
  */
-function buildSection2LoggedMomentsHtml(section4Moments: Section4Moment[]): string {
+function buildLoggedMomentsHtml(section4Moments: Section4Moment[]): string {
   if (!section4Moments || section4Moments.length === 0) {
     return "<p class=\"text-63\"><span class=\"text-rgb-54-65-83\">No logged moments in this window.</span></p>";
   }
@@ -60,7 +60,7 @@ function buildSection2LoggedMomentsHtml(section4Moments: Section4Moment[]): stri
  * We show both: pattern lines first, then "Limits" subheading, then the limits paragraph.
  * If there is no "Limits:" line we show the whole text as body.
  */
-function buildSection3PatternsHtml(section2Text: string): string {
+function buildPatternsHtml(section2Text: string): string {
   const trimmed = section2Text.trim();
   const match = trimmed.match(/\bLimits:\s*/i);
   let patternsPart = "";
@@ -87,7 +87,7 @@ function buildSection3PatternsHtml(section2Text: string): string {
 /**
  * Section 4 (Open Points for Reflection): section3Text as paragraphs, or empty if not included.
  */
-function buildSection4ReflectionHtml(finalSections: FinalSections): string {
+function buildReflectionHtml(finalSections: FinalSections): string {
   if (!finalSections.section3Included || !finalSections.section3Text.trim()) {
     return "<p class=\"text-63\"><span class=\"text-rgb-54-65-83\">None for this window.</span></p>";
   }
@@ -139,7 +139,7 @@ export function buildHtmlReport(windowBundle: WindowBundle, finalSections: Final
   html = html.replace("{{REPORT_DATE}}", escapeHtml(reportDate));
   html = html.replace("{{TIME_WINDOW}}", escapeHtml(timeWindow));
   html = html.replace("{{DAYS_WITH_ENTRIES}}", String(windowBundle.counts.daysWithEntries));
-  html = html.replace("{{DAYS_TOTAL}}", String(windowBundle.window.days));
+  html = html.replaceAll("{{DAYS_TOTAL}}", String(windowBundle.window.days));
   html = html.replace(
     "{{SCOPE_DISCLAIMER}}",
     escapeHtml(
@@ -147,14 +147,14 @@ export function buildHtmlReport(windowBundle: WindowBundle, finalSections: Final
     )
   );
   html = html.replace(
-    "{{SECTION2_LOGGED_MOMENTS_HTML}}",
-    buildSection2LoggedMomentsHtml(finalSections.section4Moments)
+    "{{LOGGED_MOMENTS_HTML}}",
+    buildLoggedMomentsHtml(finalSections.section4Moments)
   );
   html = html.replace(
-    "{{SECTION3_PATTERNS_HTML}}",
-    buildSection3PatternsHtml(finalSections.section2Text)
+    "{{PATTERNS_HTML}}",
+    buildPatternsHtml(finalSections.section2Text)
   );
-  html = html.replace("{{SECTION4_REFLECTION_HTML}}", buildSection4ReflectionHtml(finalSections));
+  html = html.replace("{{REFLECTION_HTML}}", buildReflectionHtml(finalSections));
 
   return html;
 }

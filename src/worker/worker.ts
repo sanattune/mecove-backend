@@ -31,8 +31,8 @@ import {
   sendWhatsAppReply,
   sendWhatsAppTypingIndicator,
 } from "../infra/whatsapp";
-import { buildWindowBundle } from "../summary/p0";
-import { buildMinimalFallbackReport } from "../summary/p1";
+import { buildWindowBundle } from "../summary/windowBuilder";
+import { buildMinimalFallbackReport } from "../summary/reportAssembler";
 import { generateSummaryPipeline } from "../summary/pipeline";
 import { clearSummaryArtifactsForUser } from "../summary/redisArtifacts";
 import {
@@ -85,21 +85,16 @@ function summaryLockKey(userId: string): string {
 
 const SUMMARY_RANGE_PROMPT_KEY_VERSION = "v1";
 const SUMMARY_RANGE_PROMPT_TTL_SECONDS = 10 * 60;
-const SUMMARY_RANGE_PROMPT_TEXT = "Report for:";
+const SUMMARY_RANGE_PROMPT_TEXT =
+  "It seems like you'd like a SessionBridge report summary. If so, select the period below. If not, just keep chatting \u2014 no report will be generated unless you press a button.";
 const SUMMARY_RANGE_BUTTONS: Array<{ id: string; title: string }> = [
   { id: "summary_range_7", title: "Last 7 days" },
   { id: "summary_range_15", title: "Last 15 days" },
   { id: "summary_range_30", title: "Last 30 days" },
 ];
-const SUMMARY_RANGE_CANCEL_ACTION_ID = "summary_range_cancel";
-const SUMMARY_RANGE_CANCEL_BUTTON: { id: string; title: string } = {
-  id: SUMMARY_RANGE_CANCEL_ACTION_ID,
-  title: "Cancel request",
-};
 
 async function sendSummaryRangePrompts(channelUserKey: string): Promise<void> {
   await sendWhatsAppButtons(channelUserKey, SUMMARY_RANGE_PROMPT_TEXT, SUMMARY_RANGE_BUTTONS);
-  await sendWhatsAppButtons(channelUserKey, "Cancel:", [SUMMARY_RANGE_CANCEL_BUTTON]);
 }
 
 function summaryRangePromptKey(userId: string): string {
@@ -539,6 +534,16 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
       }
 
       if (shouldGenerateSummary) {
+        // Label the latest message in the batch as a summary request so it is
+        // excluded from future report windows.
+        const latestBatchMsgId = messages[messages.length - 1]?.id;
+        if (latestBatchMsgId) {
+          await prisma.message.update({
+            where: { id: latestBatchMsgId },
+            data: { category: "summary_request" },
+          });
+        }
+
         const result = await handleSummaryIntent({
           userId,
           channelUserKey: claimedBatch.meta.channelUserKey,

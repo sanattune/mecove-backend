@@ -119,8 +119,6 @@ const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
 const SUMMARY_ALREADY_RUNNING_TEXT =
   "Your previous summary is still being generated. Please wait.";
 const SUMMARY_DEFAULT_RANGE: GenerateSummaryPayload["range"] = "last_15_days";
-const SUMMARY_RANGE_CANCEL_ACTION_ID = "summary_range_cancel";
-
 const SUMMARY_RANGE_ACTION_IDS: Record<string, GenerateSummaryPayload["range"]> = {
   summary_range_7: "last_7_days",
   summary_range_15: "last_15_days",
@@ -128,12 +126,15 @@ const SUMMARY_RANGE_ACTION_IDS: Record<string, GenerateSummaryPayload["range"]> 
 };
 
 async function sendSummaryRangePrompts(toDigits: string): Promise<void> {
-  await sendWhatsAppButtons(toDigits, "Report for:", [
-    { id: "summary_range_7", title: "Last 7 days" },
-    { id: "summary_range_15", title: "Last 15 days" },
-    { id: "summary_range_30", title: "Last 30 days" },
-  ]);
-  await sendWhatsAppButtons(toDigits, "Cancel:", [{ id: SUMMARY_RANGE_CANCEL_ACTION_ID, title: "Cancel request" }]);
+  await sendWhatsAppButtons(
+    toDigits,
+    "It seems like you'd like a SessionBridge report summary. If so, select the period below. If not, just keep chatting \u2014 no report will be generated unless you press a button.",
+    [
+      { id: "summary_range_7", title: "Last 7 days" },
+      { id: "summary_range_15", title: "Last 15 days" },
+      { id: "summary_range_30", title: "Last 30 days" },
+    ]
+  );
 }
 
 function summaryRangePromptKey(userId: string): string {
@@ -338,13 +339,6 @@ const server = http.createServer(async (req, res) => {
         if (hasPrompt) {
           const actionId = extractInboundActionId(inbound);
 
-          if (actionId === SUMMARY_RANGE_CANCEL_ACTION_ID) {
-            await redis.del(promptKey);
-            await sendWhatsAppReply(toDigits, "Request cancelled.");
-            sendJSON(res, 200, { ok: true });
-            return;
-          }
-
           const selectedRange = actionId ? SUMMARY_RANGE_ACTION_IDS[actionId] : undefined;
           if (selectedRange) {
             await redis.del(promptKey);
@@ -425,6 +419,11 @@ const server = http.createServer(async (req, res) => {
           ? toStoredTestFeedback(feedbackCommand.feedback)
           : textBody;
 
+      const messageCategory =
+        !pendingBatch && feedbackCommand.isCommand && feedbackCommand.feedback
+          ? "test_feedback"
+          : "user_message";
+
       const message = await prisma.message.upsert({
         where: {
           identityId_sourceMessageId: {
@@ -441,6 +440,7 @@ const server = http.createServer(async (req, res) => {
           sourceMessageId: messageId,
           clientTimestamp,
           rawPayload: inbound as object,
+          category: messageCategory,
         },
       });
 

@@ -1,6 +1,6 @@
 import { logger } from "../infra/logger";
 import { loadLLMConfig } from "../llm/config";
-import { buildWindowBundle } from "./p0";
+import { buildWindowBundle } from "./windowBuilder";
 import {
   buildCanonicalizerPrompt,
   buildGuardfixPrompt,
@@ -9,7 +9,7 @@ import {
   PROMPT_VERSIONS,
 } from "./prompts";
 import { writeSummaryArtifact, writeSummaryErrorArtifact } from "./redisArtifacts";
-import { assembleFinalReport, renderReportPdf } from "./p1";
+import { assembleFinalReport, renderReportPdf } from "./reportAssembler";
 import { runJsonStage, SummaryStageError } from "./stageRunner";
 import {
   isCanonicalDoc,

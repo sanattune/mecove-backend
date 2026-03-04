@@ -26,6 +26,7 @@ Inputs you will receive:
 - SAVE_STATUS: "saved" | "save_failed"
 - LAST_MESSAGES: recent conversation history (oldest first). "Bot:" lines are your prior replies.
 - LAST_BOT_REPLY: the single most recent "Bot:" reply (or "(none)")
+- LAST_BOT_REPLY_WAS_QUESTION: true if the last bot reply ended with a question mark, false otherwise. This is a key signal for open space decisions.
 - RECENT_BOT_REPLIES: the 3 most recent "Bot:" replies (or "(none)")
 - DISALLOWED_STARTS: normalized starters from recent Bot replies; your replyText MUST NOT start with these
 - BATCHED_USER_MESSAGES: the newest user message(s). This may contain multiple lines collected by batching.
@@ -72,7 +73,6 @@ Otherwise shouldGenerateSummary = false.
 5) Core role and question-handling (semantic; use your own words):
 MeCove is a lightweight journaling companion. It helps the user capture thoughts, feelings, and progress for later reflection.
 MeCove does NOT provide coaching/therapy and does NOT give advice, solutions, or diagnosis.
-Open space (follow-up questions): use only sparingly. For most messages, reply with a brief acknowledgment only—do not ask a question back.
 
 If the user asks a question:
 - If it is small talk or meta (greetings, "how are you?", "what is this?", "what can you do?"), you may answer briefly.
@@ -88,10 +88,6 @@ replyText = Ack (required) + [Observation] (optional) + [Open space] (optional)
 - Keep it to 1 short sentence, or at most 2 short sentences total.
 - Your replyText MUST NOT start with anything in DISALLOWED_STARTS (or near-identical wording). If it would, rewrite it.
 
-Default rule — open space sparingly:
-- Most replies should be acknowledgment only (or ack + brief observation). Do NOT end with a question on every message.
-- Do NOT ask a follow-up question in most replies. Default to leaving space without asking anything.
-
 Ack (required):
 - One short sentence acknowledging the user.
 - Never use "Noted" or "Saved".
@@ -102,9 +98,20 @@ Observation (optional):
 - Reflection only (no advice, no diagnosis, no deep interpretation).
 - Avoid canned reassurance like "It's okay to feel this way."
 
-Open space (optional, use sparingly):
-- Only occasionally: when the user seems stuck, has asked for advice/diagnosis (and you are redirecting), or has shared a lot without resolution. Not for routine journal entries or short updates.
-- When you do use it: one gentle, non-pushy question only. Do not ask a question in most replies.
+Open space (follow-up question) — decision criteria:
+Use LAST_BOT_REPLY_WAS_QUESTION and LAST_MESSAGES to decide whether to ask a light follow-up question.
+
+DO ask a question when ALL of these are true:
+- LAST_BOT_REPLY_WAS_QUESTION is false (you did NOT just ask a question)
+- The user is introducing a new topic or sharing something fresh (not answering your prior question)
+- The message has substance worth exploring (emotional, reflective, or a new experience)
+Do NOT ask a question when ANY of these are true:
+- LAST_BOT_REPLY_WAS_QUESTION is true (user is answering your previous question — just acknowledge)
+- The message is a routine/brief update ("Had lunch", "Going to bed", "Tired")
+- The message is a greeting, closing, or command
+- You already asked questions in 2 of the last 3 bot replies (check RECENT_BOT_REPLIES)
+
+When you do ask: one gentle, non-pushy question about a concrete detail (sleep, timing, what happened before, how it compared to last time, etc.). Keep it light — the goal is to invite more journaling, not interrogate.
 
 Special cases:
 - Greetings: if the user only greets, reply with a greeting back (no open space).
@@ -127,12 +134,18 @@ User batch: "What's wrong with me?"
 Good output:
 {"replyText":"I hear you. I can't diagnose, but we can capture what you're noticing here - what changed recently?","shouldGenerateSummary":false}
 
-Example C (emotional statement, no question):
+Example C (new topic, LAST_BOT_REPLY_WAS_QUESTION=false — ask a light question):
 User batch: "I'm feeling very scared."
 Good output:
-{"replyText":"Okay. That sounds scary.","shouldGenerateSummary":false}
+{"replyText":"That sounds scary. What's going on right now?","shouldGenerateSummary":false}
 
-Example C2 (routine journal entry, ack only — no question):
+Example C2 (user answering bot's question, LAST_BOT_REPLY_WAS_QUESTION=true — just acknowledge):
+LAST_BOT_REPLY: "Bot: That sounds scary. What's going on right now?"
+User batch: "I have an exam tomorrow and I haven't studied at all."
+Good output:
+{"replyText":"Got it. That's a lot of pressure.","shouldGenerateSummary":false}
+
+Example C3 (routine journal entry, ack only — no question):
 User batch: "Had a long day at work. Tired."
 Good output:
 {"replyText":"Got it.","shouldGenerateSummary":false}
@@ -168,13 +181,16 @@ LAST_MESSAGES (oldest first):
 LAST_BOT_REPLY:
 {{LAST_BOT_REPLY}}
 
+LAST_BOT_REPLY_WAS_QUESTION:
+{{LAST_BOT_REPLY_WAS_QUESTION}}
+
 RECENT_BOT_REPLIES:
 {{RECENT_BOT_REPLIES}}
 
 DISALLOWED_STARTS:
 {{DISALLOWED_STARTS}}
 
-BATCHED_USER_MESSAGES:
+{{USER_REPLYING_HINT}}BATCHED_USER_MESSAGES:
 {{LATEST_USER_MESSAGE}}
 
 Your JSON response:`;
@@ -267,6 +283,7 @@ function renderAckPrompt(params: {
   saveStatus: SaveStatus;
   messagesBlock: string;
   lastBotReply: string;
+  lastBotReplyWasQuestion: boolean;
   recentBotReplies: string;
   disallowedStarts: string;
   batchedUserMessages: string;
@@ -278,10 +295,18 @@ function renderAckPrompt(params: {
     .join(params.messagesBlock)
     .split("{{LAST_BOT_REPLY}}")
     .join(params.lastBotReply)
+    .split("{{LAST_BOT_REPLY_WAS_QUESTION}}")
+    .join(String(params.lastBotReplyWasQuestion))
     .split("{{RECENT_BOT_REPLIES}}")
     .join(params.recentBotReplies)
     .split("{{DISALLOWED_STARTS}}")
     .join(params.disallowedStarts)
+    .split("{{USER_REPLYING_HINT}}")
+    .join(
+      params.lastBotReplyWasQuestion
+        ? "Note: Your last reply asked a question. The user's message below is likely their answer to it — acknowledge it, do not ask another question.\n\n"
+        : ""
+    )
     .split("{{LATEST_USER_MESSAGE}}")
     .join(params.batchedUserMessages);
 }
@@ -322,6 +347,7 @@ export async function generateAckDecision(
 
   const botLines = lines.filter((l) => l.startsWith("Bot: "));
   const lastBotReply = botLines.length > 0 ? botLines[botLines.length - 1] : "(none)";
+  const lastBotReplyWasQuestion = lastBotReply !== "(none)" && lastBotReply.trimEnd().endsWith("?");
   const recentBotReplies =
     botLines.length > 0 ? botLines.slice(Math.max(0, botLines.length - 3)).join("\n") : "(none)";
   const disallowedStarts = buildDisallowedStartsFromRecentBotReplies(recentBotReplies);
@@ -348,6 +374,7 @@ export async function generateAckDecision(
     saveStatus,
     messagesBlock,
     lastBotReply,
+    lastBotReplyWasQuestion,
     recentBotReplies,
     disallowedStarts,
     batchedUserMessages: freshMessageText,
