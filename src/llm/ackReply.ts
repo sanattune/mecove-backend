@@ -32,26 +32,23 @@ const ACK_PHRASES = [
 ] as const;
 
 /**
- * Pick the next ack phrase that wasn't used in recent replies.
- * Checks which phrases from ACK_PHRASES were used as the opening of each recent replyText,
- * then returns the first unused one. Wraps around if all were used.
+ * Pick the next ack phrase by rotating through the list.
+ * Finds which phrase the LAST reply used, then returns the next one in the list.
+ * This guarantees consecutive replies always use different phrases regardless of history.
  */
 function selectAckPhrase(recentReplyTexts: string[]): string {
-  const usedPhrases = new Set<string>();
-  for (const reply of recentReplyTexts) {
-    const lower = reply.toLowerCase().trimStart();
-    for (const phrase of ACK_PHRASES) {
-      if (lower.startsWith(phrase.toLowerCase())) {
-        usedPhrases.add(phrase);
-        break;
-      }
+  if (recentReplyTexts.length === 0) return ACK_PHRASES[0];
+
+  // Check the most recent reply to find which phrase it used
+  const lastReply = recentReplyTexts[recentReplyTexts.length - 1].toLowerCase().trimStart();
+  for (let i = 0; i < ACK_PHRASES.length; i++) {
+    if (lastReply.startsWith(ACK_PHRASES[i].toLowerCase())) {
+      // Return the next phrase in the list, wrapping around
+      return ACK_PHRASES[(i + 1) % ACK_PHRASES.length];
     }
   }
 
-  for (const phrase of ACK_PHRASES) {
-    if (!usedPhrases.has(phrase)) return phrase;
-  }
-  // All used (shouldn't happen with 10 phrases and 10 messages) — wrap around
+  // Last reply didn't match any known phrase (old format) — start from the top
   return ACK_PHRASES[0];
 }
 
