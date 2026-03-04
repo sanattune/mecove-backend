@@ -7,8 +7,16 @@ function getArgValue(flag: string): string | undefined {
   return process.argv[idx + 1];
 }
 
-function quoteIdent(name: string): string {
-  return `"${name.replaceAll('"', '""')}"`;
+/** Resolve the expected DB name from env vars (DB_NAME takes priority over DATABASE_URL). */
+function resolveExpectedDbName(): string | undefined {
+  const dbName = (process.env.DB_NAME ?? "").trim();
+  if (dbName) return dbName;
+
+  const databaseUrl = (process.env.DATABASE_URL ?? "").trim();
+  if (!databaseUrl) return undefined;
+
+  const parsed = new URL(databaseUrl);
+  return decodeURIComponent(parsed.pathname.replace(/^\//, "")) || undefined;
 }
 
 async function main() {
@@ -20,45 +28,42 @@ async function main() {
   }
 
   const confirm = getArgValue("--confirm")?.trim();
-  const dbName = (process.env.DB_NAME ?? "").trim();
-  const databaseUrl = (process.env.DATABASE_URL ?? "").trim();
-
   if (!confirm) {
     throw new Error("Missing --confirm <DB_NAME>. Example: pnpm db:wipe -- --confirm mecove");
   }
 
-  if (dbName && confirm !== dbName) {
-    throw new Error(`Refusing to wipe DB. --confirm was '${confirm}' but DB_NAME is '${dbName}'.`);
+  const expected = resolveExpectedDbName();
+  if (expected && confirm !== expected) {
+    throw new Error(`Refusing to wipe DB. --confirm was '${confirm}' but actual DB is '${expected}'.`);
   }
 
-  if (!dbName && databaseUrl) {
-    const parsed = new URL(databaseUrl);
-    const urlDbName = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
-    if (confirm !== urlDbName) {
-      throw new Error(
-        `Refusing to wipe DB. --confirm was '${confirm}' but DATABASE_URL DB is '${urlDbName}'.`
-      );
-    }
-  }
+  // Discover + truncate in a single server round-trip using a DO block
+  // The DO block builds the TRUNCATE dynamically with quote_ident() for safe quoting
+  await prisma.$executeRawUnsafe(
+    `DO $$ DECLARE _sql text; BEGIN
+       SELECT 'TRUNCATE TABLE ' || string_agg(quote_ident(tablename), ', ') || ' RESTART IDENTITY CASCADE'
+         INTO _sql
+         FROM pg_tables
+        WHERE schemaname = 'public' AND tablename <> '_prisma_migrations';
+       IF _sql IS NOT NULL THEN EXECUTE _sql; END IF;
+     END $$`
+  );
 
+  // Report what was wiped (lightweight follow-up query)
   const rows = await prisma.$queryRaw<{ tablename: string }[]>`
     SELECT tablename
-    FROM pg_tables
-    WHERE schemaname = 'public'
-      AND tablename <> '_prisma_migrations'
-    ORDER BY tablename;
+      FROM pg_tables
+     WHERE schemaname = 'public'
+       AND tablename <> '_prisma_migrations'
+     ORDER BY tablename;
   `;
 
-  const tables = rows.map((r) => r.tablename).filter(Boolean);
+  const tables = rows.map((r) => r.tablename);
   if (tables.length === 0) {
-    console.log("No tables found to wipe (excluding _prisma_migrations).");
-    return;
+    console.log("No tables found (excluding _prisma_migrations).");
+  } else {
+    console.log(`Wiped ${tables.length} tables: ${tables.join(", ")}`);
   }
-
-  const sql = `TRUNCATE TABLE ${tables.map(quoteIdent).join(", ")} RESTART IDENTITY CASCADE;`;
-  console.log(`Wiping ${tables.length} tables from public schema (excluding _prisma_migrations)...`);
-  await prisma.$executeRawUnsafe(sql);
-  console.log("Done.");
 }
 
 main()
@@ -69,4 +74,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

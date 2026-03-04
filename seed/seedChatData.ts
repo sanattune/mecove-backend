@@ -19,13 +19,13 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { prisma } from "../src/infra/prisma";
 
-interface ChatMessage {
+export interface ChatMessage {
   index: number;
   u: string;
   r: string;
 }
 
-interface ChatDay {
+export interface ChatDay {
   day: number;
   chat?: ChatMessage[];
 }
@@ -182,6 +182,7 @@ async function insertMessages(
           clientTimestamp: timestamp,
           repliedAt: replyTimestamp,
           replyText: message.r && message.r.trim() ? message.r : null,
+          category: "user_message",
         },
         create: {
           userId,
@@ -193,6 +194,7 @@ async function insertMessages(
           clientTimestamp: timestamp,
           repliedAt: replyTimestamp,
           replyText: message.r && message.r.trim() ? message.r : null,
+          category: "user_message",
         },
       });
 
@@ -201,6 +203,24 @@ async function insertMessages(
   }
 
   console.log(`Inserted ${totalMessages} messages`);
+}
+
+export async function seedFromFile(
+  filePath: string,
+  userId: string,
+  identityId: string,
+  clear: boolean
+): Promise<void> {
+  console.log(`Reading chat data from: ${filePath}`);
+  const fileContent = readFileSync(filePath, "utf-8");
+  const data: ChatDay[] = JSON.parse(fileContent);
+
+  if (clear) {
+    await clearExistingData(userId);
+  }
+
+  await insertMessages(data, userId, identityId);
+  console.log("Seed data insertion complete!");
 }
 
 async function main() {

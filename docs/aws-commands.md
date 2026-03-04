@@ -124,6 +124,21 @@ sudo -u mecove bash -lc 'cd /home/mecove/app && pnpm sync:webhook'
 sudo -u mecove bash -lc 'cd /home/mecove/app && pnpm db:smoke'
 ```
 
+### Seed chat data
+
+Seed from a hand-written JSON file:
+
+```bash
+sudo -u mecove bash -lc 'cd /home/mecove/app && pnpm seed:chat seed/chat-data/chat1.json --clear'
+```
+
+LLM-generate chat data from a YAML config (and optionally seed DB):
+
+```bash
+sudo -u mecove bash -lc 'cd /home/mecove/app && pnpm seed:generate'
+sudo -u mecove bash -lc 'cd /home/mecove/app && pnpm seed:generate seed/seed-input.yaml'
+```
+
 ### Wipe the database (data-only; schema stays intact)
 
 This truncates all tables in `public` except `_prisma_migrations`. It is intentionally guarded.

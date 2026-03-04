@@ -14,7 +14,8 @@
     "db:wipe": "tsx src/scripts/db_wipe.ts",
     "sync:webhook": "tsx src/scripts/syncMetaWebhook.ts",
     "check:reply-queue": "tsx src/scripts/check_reply_queue.ts",
-    "seed:chat": "tsx seed/seedChatData.ts"
+    "seed:chat": "tsx seed/seedChatData.ts",
+    "seed:generate": "tsx seed/generateChatData.ts"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

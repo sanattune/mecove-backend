@@ -1,0 +1,28 @@
+# Phone number used to look up (or create) the user via Identity,
+# same as WhatsApp webhook flow
+phone: "+919876543210"
+
+# Persona description driving the journal content
+persona: "anxious grad student preparing for thesis defense"
+
+# Emotional arc across the journal days
+arc: "starts stressed and overwhelmed, gradually finds coping strategies, ends cautiously optimistic"
+
+# Number of active chat days to generate
+days: 10
+
+# Messages per day range (min-max)
+messages: "2-5"
+
+# Gap between active chat days (center value, actual gap varies +/-1, min 1)
+# gap=2 means 2-4 days between active days
+gap: 2
+
+# Output JSON path (optional, auto-generated if omitted)
+# output: "seed/chat-data/my-scenario.json"
+
+# Whether to also seed into the database after generating
+seedDb: true
+
+# Clear existing messages for this user before seeding
+clear: true
