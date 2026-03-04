@@ -244,11 +244,14 @@ async function main() {
   console.log("Seed data insertion complete!");
 }
 
-main()
-  .catch((error) => {
-    console.error("Error:", error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// Only run main() when this file is the direct entry point (not imported)
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error("Error:", error);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
