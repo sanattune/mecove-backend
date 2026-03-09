@@ -1,6 +1,7 @@
 import { prisma } from "../infra/prisma";
 import { logger } from "../infra/logger";
-import { isStoredTestFeedbackText } from "../messages/testFeedback";
+import { decryptText } from "../infra/encryption";
+import { getOrCreateUserDek } from "../infra/userDek";
 import { LlmViaApi } from "./llmViaApi";
 import { loadLLMConfigForTask } from "./config";
 
@@ -342,13 +343,22 @@ export async function generateAckDecision(
     where: { userId },
     orderBy: { createdAt: "desc" },
     take: ACK_CONTEXT_FETCH_LIMIT,
-    select: { text: true, createdAt: true, replyText: true, repliedAt: true },
+    select: { text: true, createdAt: true, replyText: true, repliedAt: true, category: true },
   });
+
+  const dek = await getOrCreateUserDek(userId);
+
   // Last ACK_CONTEXT_TARGET_COUNT (10) user messages, then reverse so oldest-first for the prompt
   const filteredRecent = recentMessages
-    .filter((m) => !isStoredTestFeedbackText(m.text))
+    .filter((m) => m.category !== "test_feedback")
     .slice(0, ACK_CONTEXT_TARGET_COUNT);
   const oldestFirst = filteredRecent.reverse();
+
+  // Decrypt text and replyText in place
+  for (const m of oldestFirst) {
+    if (m.text) m.text = decryptText(m.text, dek);
+    if (m.replyText) m.replyText = decryptText(m.replyText, dek);
+  }
 
   // Format messages as alternating User/Bot pairs (oldest first) so the LLM sees chronology and its prior replies
   const lines: string[] = [];

@@ -55,7 +55,7 @@ async function main() {
       identityId: identity.id,
       contentType: "text",
       text: "hello mecove",
-      rawPayload: { test: true },
+      rawPayload: JSON.stringify({ test: true }),
       sourceMessageId,
     },
   });

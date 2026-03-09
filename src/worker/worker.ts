@@ -20,6 +20,8 @@ import {
   type FlushReplyBatchPayload,
 } from "../queues/replyBatchQueue";
 import { generateAckDecision } from "../llm/ackReply";
+import { decryptText, encryptText, getKek } from "../infra/encryption";
+import { getOrCreateUserDek } from "../infra/userDek";
 import {
   TEST_FEEDBACK_COMMAND,
   TEST_FEEDBACK_SUCCESS_REPLY,
@@ -54,6 +56,7 @@ import {
 if (!process.env.REDIS_URL?.trim()) {
   throw new Error("REDIS_URL is required. Set it in .env");
 }
+getKek(); // validates ENCRYPTION_MASTER_KEY at startup
 const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
 const hasDatabaseParts = Boolean(
   process.env.DB_HOST?.trim() &&
@@ -113,6 +116,12 @@ async function buildAllTimeChatlogMarkdown(userId: string): Promise<string> {
     orderBy: { createdAt: "asc" },
     select: { createdAt: true, text: true, replyText: true, repliedAt: true },
   });
+
+  const dek = await getOrCreateUserDek(userId);
+  for (const m of messages) {
+    if (m.text) m.text = decryptText(m.text, dek);
+    if (m.replyText) m.replyText = decryptText(m.replyText, dek);
+  }
 
   const formatTime = (d: Date): string =>
     d.toLocaleTimeString("en-US", {
@@ -379,11 +388,12 @@ const replyWorker = new Worker<GenerateReplyPayload>(
 
     if (mode === "busy_notice") {
       await sendWhatsAppReply(channelUserKey, BUSY_NOTICE_TEXT);
+      const busyDek = await getOrCreateUserDek(userId);
       await prisma.message.update({
         where: { id: messageId },
         data: {
           repliedAt: new Date(),
-          replyText: BUSY_NOTICE_TEXT,
+          replyText: encryptText(BUSY_NOTICE_TEXT, busyDek),
         },
       });
       return;
@@ -425,11 +435,12 @@ const replyWorker = new Worker<GenerateReplyPayload>(
     await sendWhatsAppReply(channelUserKey, replyText);
 
     if (command !== "/clear") {
+      const cmdDek = await getOrCreateUserDek(userId);
       await prisma.message.update({
         where: { id: messageId },
         data: {
           repliedAt: new Date(),
-          replyText,
+          replyText: encryptText(replyText, cmdDek),
         },
       });
     }
@@ -495,6 +506,11 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
         },
       });
       if (messages.length === 0) return;
+
+      const batchDek = await getOrCreateUserDek(userId);
+      for (const m of messages) {
+        if (m.text) m.text = decryptText(m.text, batchDek);
+      }
 
       const combinedText = messages
         .map((m) => (m.text ?? "").trim())
@@ -568,7 +584,7 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
             where: { id: latestMessageId },
             data: {
               repliedAt: new Date(),
-              replyText,
+              replyText: encryptText(replyText, batchDek),
             },
           });
         } catch (err) {

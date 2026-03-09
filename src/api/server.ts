@@ -18,6 +18,8 @@ import {
 } from "../messages/testFeedback";
 import { JOB_NAME_GENERATE_REPLY, replyQueue } from "../queues/replyQueue";
 import { JOB_NAME_FLUSH_REPLY_BATCH, replyBatchQueue } from "../queues/replyBatchQueue";
+import { encryptText, getKek } from "../infra/encryption";
+import { getOrCreateUserDek } from "../infra/userDek";
 import {
   JOB_NAME_GENERATE_SUMMARY,
   summaryQueue,
@@ -53,6 +55,7 @@ type WhatsAppWebhookPayload = {
 if (!process.env.REDIS_URL?.trim()) {
   throw new Error("REDIS_URL is required. Set it in .env");
 }
+getKek(); // validates ENCRYPTION_MASTER_KEY at startup
 const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
 const hasDatabaseParts = Boolean(
   process.env.DB_HOST?.trim() &&
@@ -424,6 +427,10 @@ const server = http.createServer(async (req, res) => {
           ? "test_feedback"
           : "user_message";
 
+      const dek = await getOrCreateUserDek(user.id);
+      const encryptedText = encryptText(storedText, dek);
+      const encryptedRawPayload = encryptText(JSON.stringify(inbound), dek);
+
       const message = await prisma.message.upsert({
         where: {
           identityId_sourceMessageId: {
@@ -436,10 +443,10 @@ const server = http.createServer(async (req, res) => {
           userId: user.id,
           identityId: identity.id,
           contentType: "text",
-          text: storedText,
+          text: encryptedText,
           sourceMessageId: messageId,
           clientTimestamp,
-          rawPayload: inbound as object,
+          rawPayload: encryptedRawPayload,
           category: messageCategory,
         },
       });

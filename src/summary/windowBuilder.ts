@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { prisma } from "../infra/prisma";
-import { isStoredTestFeedbackText } from "../messages/testFeedback";
+import { decryptText } from "../infra/encryption";
+import { getOrCreateUserDek } from "../infra/userDek";
 import type { SignalBucket, WindowBundle, WindowDay } from "./types";
 
 const IST_OFFSET_MINUTES = 330;
@@ -71,11 +72,13 @@ export async function buildWindowBundle(
     },
   });
 
+  const dek = await getOrCreateUserDek(userId);
+
   const byDay = new Map<string, WindowDay>();
   for (const msg of messages) {
-    const raw = (msg.text ?? "").trim();
+    const raw = msg.text ? decryptText(msg.text, dek).trim() : "";
     if (!raw) continue;
-    if (raw.startsWith("/") || isStoredTestFeedbackText(raw)) continue;
+    if (raw.startsWith("/")) continue;
 
     const date = toIstDateString(msg.createdAt);
     if (!byDay.has(date)) {
@@ -84,7 +87,7 @@ export async function buildWindowBundle(
     byDay.get(date)!.messages.push({
       messageId: msg.id,
       createdAt: msg.createdAt.toISOString(),
-      text: msg.text ?? "",
+      text: raw,
     });
   }
 
