@@ -28,6 +28,7 @@ import {
 } from "../messages/testFeedback";
 import { buildHelpText } from "../commands/registry";
 import { getConfigName } from "../access/config";
+import { consentConfig } from "../consent/config";
 import {
   sendWhatsAppBufferDocument,
   sendWhatsAppButtons,
@@ -459,6 +460,12 @@ const replyWorker = new Worker<GenerateReplyPayload>(
         : "none";
       const sinceText = memberSince ? ` since ${memberSince}` : "";
       replyText = `${messageCount} message${messageCount === 1 ? "" : "s"} logged${sinceText}.\nLast SessionBridge report: ${lastReport}.`;
+    } else if (command === "/privacy") {
+      const mvp = consentConfig.mvp;
+      const parts: string[] = [];
+      if (mvp.link) parts.push(`Privacy & Usage Notice: ${mvp.link}`);
+      parts.push(mvp.message);
+      replyText = parts.join("\n\n");
     } else if (command === TEST_FEEDBACK_COMMAND) {
       replyText = TEST_FEEDBACK_SUCCESS_REPLY;
     } else if (command === "/approve") {
