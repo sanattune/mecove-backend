@@ -1,0 +1,12 @@
+allowlist:
+  - number: "+919921919072"
+    name: "Girija"
+  - number: "+919594942173"
+    name: "Ssonal"
+admins:
+  - number: "+919130099484"
+    name: "Santosh"
+  - number: "+919130017237"
+    name: "Shilpa"
+messages:
+  waitlist: "Thanks for reaching out! meCove is currently in closed beta. We'll be in touch when your access opens up."

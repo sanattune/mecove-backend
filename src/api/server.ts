@@ -1,6 +1,7 @@
 import "dotenv/config";
 import http from "node:http";
 import { consentConfig, type ConsentStep } from "../consent/config";
+import { accessConfig, isAdmin, isAllowlisted } from "../access/config";
 import {
   CONSENT_ACTION_IDS,
   applyConsentAcceptance,
@@ -54,6 +55,9 @@ type WhatsAppWebhookPayload = {
 // Fail fast on startup
 if (!process.env.REDIS_URL?.trim()) {
   throw new Error("REDIS_URL is required. Set it in .env");
+}
+if (!process.env.MVP_ACCESS_CONFIG_PATH?.trim()) {
+  throw new Error("MVP_ACCESS_CONFIG_PATH is required. Set it in .env");
 }
 getKek(); // validates ENCRYPTION_MASTER_KEY at startup
 const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
@@ -284,7 +288,13 @@ const server = http.createServer(async (req, res) => {
       });
 
       if (!identity) {
-        const user = await prisma.user.create({ data: {} });
+        const user = await prisma.user.create({
+          data: {
+            role: isAdmin(channelUserKey) ? "admin" : "user",
+            approvedAt:
+              isAdmin(channelUserKey) || isAllowlisted(channelUserKey) ? new Date() : null,
+          },
+        });
         identity = await prisma.identity.create({
           data: {
             userId: user.id,
@@ -296,6 +306,20 @@ const server = http.createServer(async (req, res) => {
       }
 
       const user = identity.user;
+
+      // Approval gate — block unapproved users before consent gate
+      if (!user.approvedAt) {
+        const redis = getRedis();
+        const notifiedKey = `access:waitlist_notified:${user.id}`;
+        const alreadyNotified = await redis.get(notifiedKey);
+        if (!alreadyNotified) {
+          await redis.set(notifiedKey, "1");
+          await sendWhatsAppReply(toDigits, accessConfig.messages.waitlist);
+        }
+        sendJSON(res, 200, { ok: true });
+        return;
+      }
+
       const pendingStep = getPendingConsentStep(user, consentConfig);
       if (pendingStep !== null) {
         const redis = getRedis();

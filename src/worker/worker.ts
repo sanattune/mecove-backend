@@ -26,6 +26,7 @@ import {
   TEST_FEEDBACK_COMMAND,
   TEST_FEEDBACK_SUCCESS_REPLY,
 } from "../messages/testFeedback";
+import { buildHelpText } from "../commands/registry";
 import {
   sendWhatsAppBufferDocument,
   sendWhatsAppButtons,
@@ -76,7 +77,7 @@ const SUMMARY_ALREADY_RUNNING_TEXT =
 const SUMMARY_TIMEOUT_TEXT = "Summary generation timed out. Please request again.";
 const CHATLOG_SENT_TEXT = "I have sent your chat log as an attachment.";
 const CHAT_CLEARED_TEXT = "Your chat history has been cleared.";
-const UNKNOWN_COMMAND_TEXT = "Unknown command. Available: /chatlog, /clear, /f";
+const UNKNOWN_COMMAND_TEXT = "Unknown command. Type /help to see available commands.";
 const BUSY_NOTICE_TEXT =
   "Please wait, I am processing your previous message. Retry command in a moment.";
 
@@ -405,9 +406,18 @@ const replyWorker = new Worker<GenerateReplyPayload>(
       return;
     }
 
+    // Fetch sender role once — needed for /help and admin commands
+    const sender = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    const isAdminUser = sender?.role === "admin";
+
     let replyText = CHATLOG_SENT_TEXT;
 
-    if (command === "/chatlog") {
+    if (command === "/help") {
+      replyText = buildHelpText(isAdminUser);
+    } else if (command === "/chatlog") {
       const chatlog = await buildAllTimeChatlogMarkdown(userId);
       const filename = `mecove-chatlog-${new Date().toISOString().slice(0, 10)}.md`;
       await sendWhatsAppBufferDocument(
@@ -426,8 +436,96 @@ const replyWorker = new Worker<GenerateReplyPayload>(
       await clearReplyBatchState(userId);
       await clearSummaryArtifactsForUser(userId);
       replyText = CHAT_CLEARED_TEXT;
+    } else if (command === "/stats") {
+      const [messageCount, firstMessage, lastSummary] = await Promise.all([
+        prisma.message.count({ where: { userId, category: { not: "test_feedback" } } }),
+        prisma.message.findFirst({
+          where: { userId, category: { not: "test_feedback" } },
+          orderBy: { createdAt: "asc" },
+          select: { createdAt: true },
+        }),
+        prisma.summary.findFirst({
+          where: { userId, status: { in: ["success", "success_fallback"] } },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+        }),
+      ]);
+      const memberSince = firstMessage
+        ? firstMessage.createdAt.toISOString().slice(0, 10)
+        : null;
+      const lastReport = lastSummary
+        ? lastSummary.createdAt.toISOString().slice(0, 10)
+        : "none";
+      const sinceText = memberSince ? ` since ${memberSince}` : "";
+      replyText = `${messageCount} message${messageCount === 1 ? "" : "s"} logged${sinceText}.\nLast SessionBridge report: ${lastReport}.`;
     } else if (command === TEST_FEEDBACK_COMMAND) {
       replyText = TEST_FEEDBACK_SUCCESS_REPLY;
+    } else if (command === "/approve") {
+      if (!isAdminUser) {
+        replyText = UNKNOWN_COMMAND_TEXT;
+      } else {
+        const phoneArg = messageText.trim().split(/\s+/)[1]?.trim() ?? "";
+        const normalizedPhone = phoneArg.startsWith("+") ? phoneArg : `+${phoneArg}`;
+        const targetIdentity = await prisma.identity.findUnique({
+          where: {
+            channel_channelUserKey: { channel: "whatsapp", channelUserKey: normalizedPhone },
+          },
+          include: { user: true },
+        });
+        if (!targetIdentity) {
+          replyText = `No user found for ${normalizedPhone}.`;
+        } else if (targetIdentity.user.approvedAt) {
+          replyText = `${normalizedPhone} is already approved.`;
+        } else {
+          await prisma.user.update({
+            where: { id: targetIdentity.userId },
+            data: { approvedAt: new Date() },
+          });
+          replyText = `${normalizedPhone} approved.`;
+        }
+      }
+    } else if (command === "/waitlist") {
+      if (!isAdminUser) {
+        replyText = UNKNOWN_COMMAND_TEXT;
+      } else {
+        const waitlisted = await prisma.identity.findMany({
+          where: { channel: "whatsapp", user: { approvedAt: null } },
+          select: { channelUserKey: true, createdAt: true },
+          orderBy: { createdAt: "asc" },
+        });
+        if (waitlisted.length === 0) {
+          replyText = "No users on the waitlist.";
+        } else {
+          const lines = waitlisted.map(
+            (i) => `${i.channelUserKey} (since ${i.createdAt.toISOString().slice(0, 10)})`
+          );
+          replyText = `Waitlist (${waitlisted.length}):\n${lines.join("\n")}`;
+        }
+      }
+    } else if (command === "/revoke") {
+      if (!isAdminUser) {
+        replyText = UNKNOWN_COMMAND_TEXT;
+      } else {
+        const phoneArg = messageText.trim().split(/\s+/)[1]?.trim() ?? "";
+        const normalizedPhone = phoneArg.startsWith("+") ? phoneArg : `+${phoneArg}`;
+        const targetIdentity = await prisma.identity.findUnique({
+          where: {
+            channel_channelUserKey: { channel: "whatsapp", channelUserKey: normalizedPhone },
+          },
+          include: { user: true },
+        });
+        if (!targetIdentity) {
+          replyText = `No user found for ${normalizedPhone}.`;
+        } else if (!targetIdentity.user.approvedAt) {
+          replyText = `${normalizedPhone} is not currently approved.`;
+        } else {
+          await prisma.user.update({
+            where: { id: targetIdentity.userId },
+            data: { approvedAt: null },
+          });
+          replyText = `${normalizedPhone} revoked.`;
+        }
+      }
     } else {
       replyText = UNKNOWN_COMMAND_TEXT;
     }
