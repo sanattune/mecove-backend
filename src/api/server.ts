@@ -302,6 +302,26 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      // Reconcile role/approval for existing users if config has changed
+      {
+        const updates: { role?: string; approvedAt?: Date } = {};
+        if (isAdmin(channelUserKey) && identity.user.role !== "admin") {
+          updates.role = "admin";
+        }
+        if ((isAdmin(channelUserKey) || isAllowlisted(channelUserKey)) && !identity.user.approvedAt) {
+          updates.approvedAt = new Date();
+        }
+        if (Object.keys(updates).length > 0) {
+          identity = {
+            ...identity,
+            user: await prisma.user.update({
+              where: { id: identity.user.id },
+              data: updates,
+            }),
+          };
+        }
+      }
+
       const user = identity.user;
 
       // Approval gate — block unapproved users before consent gate
