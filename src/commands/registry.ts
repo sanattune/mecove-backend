@@ -13,6 +13,7 @@ export const COMMANDS: CommandDef[] = [
   { name: "/approve",  description: "/approve <phone> — approve a waitlisted user",  adminOnly: true  },
   { name: "/waitlist", description: "List users waiting for access",                 adminOnly: true  },
   { name: "/revoke",   description: "/revoke <phone> — remove access from a user",   adminOnly: true  },
+  { name: "/users",    description: "List all approved users",                       adminOnly: true  },
   { name: "/f",        description: "Submit test feedback",                           adminOnly: false, hidden: true },
 ];
 

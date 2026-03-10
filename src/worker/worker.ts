@@ -27,6 +27,7 @@ import {
   TEST_FEEDBACK_SUCCESS_REPLY,
 } from "../messages/testFeedback";
 import { buildHelpText } from "../commands/registry";
+import { getConfigName } from "../access/config";
 import {
   sendWhatsAppBufferDocument,
   sendWhatsAppButtons,
@@ -524,6 +525,26 @@ const replyWorker = new Worker<GenerateReplyPayload>(
             data: { approvedAt: null },
           });
           replyText = `${normalizedPhone} revoked.`;
+        }
+      }
+    } else if (command === "/users") {
+      if (!isAdminUser) {
+        replyText = UNKNOWN_COMMAND_TEXT;
+      } else {
+        const identities = await prisma.identity.findMany({
+          where: { channel: "whatsapp", user: { approvedAt: { not: null } } },
+          select: { channelUserKey: true, user: { select: { role: true } } },
+          orderBy: { createdAt: "asc" },
+        });
+        if (identities.length === 0) {
+          replyText = "No approved users.";
+        } else {
+          const lines = identities.map((i) => {
+            const name = getConfigName(i.channelUserKey);
+            const tag = i.user.role === "admin" ? " [admin]" : "";
+            return name ? `${name} (${i.channelUserKey})${tag}` : `${i.channelUserKey}${tag}`;
+          });
+          replyText = `Users (${identities.length}):\n${lines.join("\n")}`;
         }
       }
     } else {
