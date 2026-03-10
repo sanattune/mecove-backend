@@ -70,10 +70,17 @@ export function loadAccessConfigFromEnv(): AccessConfig {
 
 export const accessConfig = loadAccessConfigFromEnv();
 
+function last10(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.slice(-10);
+}
+
 export function isAllowlisted(channelUserKey: string): boolean {
-  return accessConfig.allowlist.includes(channelUserKey);
+  const key = last10(channelUserKey);
+  return accessConfig.allowlist.some((n) => last10(n) === key);
 }
 
 export function isAdmin(channelUserKey: string): boolean {
-  return accessConfig.admins.includes(channelUserKey);
+  const key = last10(channelUserKey);
+  return accessConfig.admins.some((n) => last10(n) === key);
 }
