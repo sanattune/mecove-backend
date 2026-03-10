@@ -56,9 +56,6 @@ type WhatsAppWebhookPayload = {
 if (!process.env.REDIS_URL?.trim()) {
   throw new Error("REDIS_URL is required. Set it in .env");
 }
-if (!process.env.MVP_ACCESS_CONFIG_PATH?.trim()) {
-  throw new Error("MVP_ACCESS_CONFIG_PATH is required. Set it in .env");
-}
 getKek(); // validates ENCRYPTION_MASTER_KEY at startup
 const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
 const hasDatabaseParts = Boolean(

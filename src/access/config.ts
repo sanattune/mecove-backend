@@ -55,10 +55,10 @@ function parseAccessConfig(raw: unknown): AccessConfig {
 
 function resolveConfigPath(): string {
   const rawPath = process.env.MVP_ACCESS_CONFIG_PATH?.trim();
-  if (!rawPath) {
-    throw new Error("MVP_ACCESS_CONFIG_PATH is required. Set it in .env");
+  if (rawPath) {
+    return path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), rawPath);
   }
-  return path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), rawPath);
+  return path.resolve(process.cwd(), "mvp-access.config.yaml");
 }
 
 export function loadAccessConfigFromEnv(): AccessConfig {
