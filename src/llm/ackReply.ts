@@ -4,6 +4,7 @@ import { decryptText } from "../infra/encryption";
 import { getOrCreateUserDek } from "../infra/userDek";
 import { LlmViaApi } from "./llmViaApi";
 import { loadLLMConfigForTask } from "./config";
+import { classifyMessage } from "./ackClassify";
 
 // LLM for ack/reply and summary report generation. Uses unified YAML config (llm.yaml).
 // Provider and model are selected by complexity/reasoning requirements.
@@ -167,14 +168,12 @@ DO ask a question when ALL of these are true:
 Do NOT ask a question when ANY of these are true:
 - LAST_BOT_REPLY_WAS_QUESTION is true (user is answering your previous question — just acknowledge)
 - The message is a routine/brief update ("Had lunch", "Going to bed", "Tired")
-- The message is a greeting, closing, or command
+- The message is a command
 - You already asked questions in 2 of the last 3 bot replies (check RECENT_BOT_REPLIES)
 
 When you do ask: one gentle, non-pushy question about a concrete detail (sleep, timing, what happened before, how it compared to last time, etc.). Keep it light — the goal is to invite more journaling, not interrogate.
 
 Special cases:
-- Greetings: if the user only greets, reply with a greeting back (no open space).
-- Closings: if the user is clearly closing ("bye", "good night", "gotta go"), reply politely and briefly (no open space).
 - Repetition complaint: ONLY if the user explicitly complains about repetition ("you keep saying", "stop repeating", "same thing again"):
   - Start with "You're right." then write a fresh reply that does NOT repeat RECENT_BOT_REPLIES.
 
@@ -209,11 +208,6 @@ User batch: "Had a long day at work. Tired."
 Good output:
 {"replyText":"Got it.","shouldGenerateSummary":false}
 
-Example D (greeting):
-User batch: "gooooood morning"
-Good output:
-{"replyText":"Good morning.","shouldGenerateSummary":false}
-
 Example E (repetition complaint):
 User batch: "You keep saying the same thing."
 Good output:
@@ -221,8 +215,6 @@ Good output:
 
 Example F (safety — first time): User expresses self-harm; encourage help once.
 Example G (safety — user continues talking about it): If RECENT_BOT_REPLIES already encouraged help, do NOT say "seek help" again; just reflect. e.g. User: "I still can't stop thinking about it." Good: {"replyText":"That's a lot to sit with.","shouldGenerateSummary":false} — reflect only. Occasionally (every few exchanges) add a brief reminder to reach out to someone or a helpline.
-
-Example H (summary/report request — always set shouldGenerateSummary true): User asks for summary in any form (e.g. "regenerate the summary", "I need my summary for past 15 days", "generate my last 15 days summary report", "send me my sessionbridge report", "sessionbridge", "session bridge report"). Good: set shouldGenerateSummary to true. ReplyText can be a brief ack; the system will prompt for a range using buttons. e.g. {"replyText":"Got it.","shouldGenerateSummary":true}
 
 Example H2 (feedback about report, no request — shouldGenerateSummary false):
 User batch: "Nice report but it's empty."
@@ -334,12 +326,24 @@ function renderAckPrompt(params: {
 /**
  * Fetches the last 10 messages for the user, passes them with the fresh message to the LLM,
  * and returns reply text + summary-generation intent.
+ *
+ * Two-stage flow:
+ * 1. Cheap micro-classifier handles greeting/closing/trivial/summary_request directly.
+ * 2. Full ACK_PROMPT only runs for "other" (complex/emotional/ambiguous) messages.
  */
 export async function generateAckDecision(
   userId: string,
   freshMessageText: string,
   saveStatus: SaveStatus = "saved"
 ): Promise<AckDecision> {
+  // Stage 0: synchronous pre-filter — no LLM needed
+  if (saveStatus === "save_failed") {
+    return {
+      replyText: "Your message could not be saved. Please try again in a bit.",
+      shouldGenerateSummary: false,
+    };
+  }
+
   const recentMessages = await prisma.message.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
@@ -394,9 +398,13 @@ export async function generateAckDecision(
     // ignore
   }
 
+  // Stage 1: micro-classifier — cheap call to handle simple cases without full history
+  const classifier = await classifyMessage(freshMessageText, lastBotReplyWasQuestion);
+
   logger.info("ack reply", {
     model: modelName,
     ackPhrase,
+    classifiedAs: classifier.type,
     historyMessageCount: oldestFirst.length,
     historyBotReplyCount: botLineCount,
     lastMessagesPreview:
@@ -405,6 +413,23 @@ export async function generateAckDecision(
         : messagesBlock,
   });
 
+  // Route based on classifier result
+  if (classifier.type === "greeting" || classifier.type === "closing") {
+    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateSummary: false };
+  }
+
+  if (classifier.type === "trivial") {
+    return {
+      replyText: swapAckPhrase(classifier.replyText || ackPhrase, ackPhrase),
+      shouldGenerateSummary: false,
+    };
+  }
+
+  if (classifier.type === "summary_request") {
+    return { replyText: ackPhrase, shouldGenerateSummary: true };
+  }
+
+  // Stage 2: "other" — full ACK_PROMPT for complex/emotional/ambiguous messages
   const prompt = renderAckPrompt({
     saveStatus,
     messagesBlock,
@@ -424,7 +449,7 @@ export async function generateAckDecision(
   const decision = parseAckDecision(reply);
 
   // Deterministic ack rotation: swap whatever ack the LLM used with our rotated phrase.
-  // If the reply doesn't start with a known ack (greeting, safety, closing), leave it as-is.
+  // If the reply doesn't start with a known ack (safety, closing), leave it as-is.
   decision.replyText = swapAckPhrase(decision.replyText, ackPhrase);
 
   return decision;
