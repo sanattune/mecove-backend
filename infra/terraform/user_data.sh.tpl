@@ -136,9 +136,10 @@ APP_SECRET=$(aws secretsmanager get-secret-value \
   --query SecretString --output text)
 
 # Write .env
+# Note: DATABASE_URL is intentionally omitted here so prisma.config.ts builds it
+# from the DB_* parts using encodeURIComponent — safe against special chars in passwords.
 cat > /home/mecove/app/.env <<EOF
 # Database
-DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@${db_host}:${db_port}/${db_name}?sslmode=require&uselibpqcompat=true
 DB_HOST=${db_host}
 DB_PORT=${db_port}
 DB_NAME=${db_name}
