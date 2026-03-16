@@ -1,7 +1,13 @@
 variable "api_domain_name" {
-  description = "Public DNS name for the API (Caddy will obtain a Let's Encrypt cert for this)."
+  description = "Primary public DNS name for the API (Caddy will obtain a Let's Encrypt cert for this)."
   type        = string
   default     = "api.mecove.com"
+}
+
+variable "api_domain_name2" {
+  description = "Fallback public DNS name for the API (used when Let's Encrypt rate-limits the primary domain)."
+  type        = string
+  default     = "api2.mecove.com"
 }
 
 variable "app_secrets_arn" {

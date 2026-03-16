@@ -2,10 +2,24 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error("DATABASE_URL is required");
+function buildConnectionString(): string {
+  if (process.env.DATABASE_URL?.trim()) return process.env.DATABASE_URL.trim();
+  const host = process.env.DB_HOST?.trim();
+  const port = process.env.DB_PORT?.trim() || "5432";
+  const dbName = process.env.DB_NAME?.trim();
+  const user = process.env.DB_USER?.trim();
+  const password = process.env.DB_PASSWORD?.trim();
+  const sslMode = process.env.DB_SSLMODE?.trim() || (host?.includes(".rds.amazonaws.com") ? "require" : "disable");
+  const useLibpqCompat = process.env.DB_USELIBPQCOMPAT?.trim() || (sslMode === "require" ? "true" : "");
+  if (!host || !dbName || !user || !password) throw new Error("DATABASE_URL or DB_HOST/DB_USER/DB_PASSWORD/DB_NAME required");
+  const params = new URLSearchParams();
+  if (sslMode && sslMode !== "disable") params.set("sslmode", sslMode);
+  if (useLibpqCompat) params.set("uselibpqcompat", useLibpqCompat);
+  const q = params.toString();
+  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(dbName)}${q ? `?${q}` : ""}`;
 }
+
+const connectionString = buildConnectionString();
 const parsed = new URL(connectionString);
 const isRds = parsed.hostname.endsWith(".rds.amazonaws.com");
 const sslMode = (parsed.searchParams.get("sslmode") ?? "").toLowerCase();

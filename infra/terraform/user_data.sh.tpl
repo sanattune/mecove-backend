@@ -73,7 +73,7 @@ UNIT
 systemctl daemon-reload
 
 cat > /etc/caddy/Caddyfile <<'CADDY'
-${api_domain} {
+${api_domain}, ${api_domain2} {
     reverse_proxy localhost:3000
     log {
         output file /var/log/caddy/access.log {

@@ -121,6 +121,7 @@ resource "aws_instance" "main" {
     github_repo                  = var.github_repo
     github_branch                = var.github_branch
     api_domain                   = var.api_domain_name
+    api_domain2                  = var.api_domain_name2
     log_group_api                = aws_cloudwatch_log_group.api.name
     log_group_worker             = aws_cloudwatch_log_group.worker.name
     log_group_caddy              = aws_cloudwatch_log_group.caddy.name
