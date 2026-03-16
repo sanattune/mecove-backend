@@ -9,6 +9,25 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
+# Alphanumeric-only password avoids URL-encoding issues in connection strings.
+resource "random_password" "db_master" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "db_master" {
+  name                    = "${local.name}/db-master"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "db_master" {
+  secret_id = aws_secretsmanager_secret.db_master.id
+  secret_string = jsonencode({
+    username = "mecove"
+    password = random_password.db_master.result
+  })
+}
+
 resource "aws_db_instance" "postgres" {
   identifier = "${local.name}-postgres"
 
@@ -23,8 +42,7 @@ resource "aws_db_instance" "postgres" {
 
   db_name  = "mecove"
   username = "mecove"
-
-  manage_master_user_password = true
+  password = random_password.db_master.result
 
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
@@ -51,5 +69,5 @@ output "rds_port" {
 }
 
 output "rds_master_secret_arn" {
-  value = aws_db_instance.postgres.master_user_secret[0].secret_arn
+  value = aws_secretsmanager_secret.db_master.arn
 }

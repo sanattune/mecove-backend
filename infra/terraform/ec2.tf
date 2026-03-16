@@ -34,7 +34,7 @@ resource "aws_iam_role_policy" "ec2_secrets" {
       Effect = "Allow"
       Action = ["secretsmanager:GetSecretValue"]
       Resource = [
-        aws_db_instance.postgres.master_user_secret[0].secret_arn,
+        aws_secretsmanager_secret.db_master.arn,
         var.app_secrets_arn,
         var.github_deploy_key_secret_arn,
       ]
@@ -113,7 +113,7 @@ resource "aws_instance" "main" {
   user_data = templatefile("${path.module}/user_data.sh.tpl", {
     aws_region                   = "ap-south-1"
     app_secrets_arn              = var.app_secrets_arn
-    db_master_secret_arn         = aws_db_instance.postgres.master_user_secret[0].secret_arn
+    db_master_secret_arn         = aws_secretsmanager_secret.db_master.arn
     db_host                      = aws_db_instance.postgres.address
     db_port                      = aws_db_instance.postgres.port
     db_name                      = aws_db_instance.postgres.db_name
