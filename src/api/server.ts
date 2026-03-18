@@ -114,8 +114,7 @@ function parseCommand(messageText: string): string | null {
   return trimmed.split(/\s+/)[0].toLowerCase();
 }
 
-const WELCOME_OK_ACTION_ID = "welcome_ok";
-const WELCOME_KEY_TTL_SECONDS = 60 * 60 * 24 * 30;
+const CONSENT_INTRO_KEY_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 const SUMMARY_RANGE_PROMPT_KEY_VERSION = "v1";
 const SUMMARY_RANGE_PROMPT_TTL_SECONDS = 10 * 60;
@@ -155,23 +154,6 @@ function extractInboundActionId(inbound: WhatsAppMessageNode): string | null {
   const buttonPayload = inbound.button?.payload?.trim().toLowerCase() ?? "";
   if (buttonPayload) return buttonPayload;
   return null;
-}
-
-function normalizeInboundText(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function parseWelcomeOk(inbound: WhatsAppMessageNode): boolean {
-  const interactiveId = inbound.interactive?.button_reply?.id?.trim().toLowerCase() ?? "";
-  if (interactiveId === WELCOME_OK_ACTION_ID) return true;
-
-  const buttonPayload = inbound.button?.payload?.trim().toLowerCase() ?? "";
-  if (buttonPayload === WELCOME_OK_ACTION_ID) return true;
-
-  const textBody = inbound.text?.body;
-  if (!textBody) return false;
-  const normalized = normalizeInboundText(textBody);
-  return normalized === "ok" || normalized === "okay";
 }
 
 function summaryRangeToDays(range: GenerateSummaryPayload["range"]): number {
@@ -340,14 +322,13 @@ const server = http.createServer(async (req, res) => {
       const pendingStep = getPendingConsentStep(user, consentConfig);
       if (pendingStep !== null) {
         const redis = getRedis();
-        const welcomeKey = `onboarding:welcome:${consentConfig.welcome.version}:${user.id}`;
-        const welcomed = await redis.get(welcomeKey);
-        if (!welcomed) {
-          await redis.set(welcomeKey, "1", "EX", WELCOME_KEY_TTL_SECONDS);
-          await sendWhatsAppButtons(toDigits, consentConfig.welcome.message, [
-            { id: WELCOME_OK_ACTION_ID, title: consentConfig.welcome.buttons.ok },
-          ]);
-          await sendConsentPrompt(toDigits, pendingStep, consentConfig.templates.blocked);
+        const introKey = `onboarding:consent_intro:${consentConfig.welcome.version}:${user.id}`;
+        const legacyWelcomeKey = `onboarding:welcome:${consentConfig.welcome.version}:${user.id}`;
+        const introAlreadySent =
+          (await redis.get(introKey)) || (await redis.get(legacyWelcomeKey));
+        if (!introAlreadySent) {
+          await redis.set(introKey, "1", "EX", CONSENT_INTRO_KEY_TTL_SECONDS);
+          await sendConsentPrompt(toDigits, pendingStep, consentConfig.welcome.intro);
           sendJSON(res, 200, { ok: true });
           return;
         }

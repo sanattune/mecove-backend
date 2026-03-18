@@ -16,10 +16,8 @@ export type ConsentStepConfig = {
 
 export type WelcomeConfig = {
   version: string;
-  message: string;
-  buttons: {
-    ok: string;
-  };
+  /** Shown once as preface above the first consent (Accept/Later) prompt. */
+  intro: string;
 };
 
 export type ConsentConfig = {
@@ -79,16 +77,19 @@ function parseWelcomeConfig(raw: unknown): WelcomeConfig {
     throw new Error('Invalid consent config: "welcome" section is required');
   }
   const section = raw as Record<string, unknown>;
-  const buttons = section.buttons as Record<string, unknown> | undefined;
-  if (!buttons || typeof buttons !== "object") {
-    throw new Error('Invalid consent config: "welcome.buttons" section is required');
-  }
+  const intro =
+    typeof section.intro === "string" && section.intro.trim().length > 0
+      ? asNonEmptyString(section.intro, "welcome.intro")
+      : typeof section.message === "string" && section.message.trim().length > 0
+        ? asNonEmptyString(section.message, "welcome.message")
+        : (() => {
+            throw new Error(
+              'Invalid consent config: "welcome.intro" (or legacy "welcome.message") is required'
+            );
+          })();
   return {
     version: asNonEmptyString(section.version, "welcome.version"),
-    message: asNonEmptyString(section.message, "welcome.message"),
-    buttons: {
-      ok: validateButtonLabel(buttons.ok, "welcome.buttons.ok"),
-    },
+    intro,
   };
 }
 

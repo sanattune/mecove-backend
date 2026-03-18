@@ -1,13 +1,11 @@
 welcome:
   version: "v1"
-  message: |-
+  intro: |-
     Welcome to meCove.
 
     Send messages anytime—I'll help organize them and generate summaries.
 
-    Tap OK to review the privacy/usage notice and get started.
-  buttons:
-    ok: "OK"
+    Please review the notice below and tap Accept to continue.
 
 mvp:
   version: "v2"
