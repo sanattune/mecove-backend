@@ -10,12 +10,13 @@ welcome:
     ok: "OK"
 
 mvp:
-  version: "v1"
+  version: "v2"
   message: |-
     By participating in the SessionBridge MVP, you acknowledge that:
 
     * This is a test-phase product that may malfunction or be discontinued.
     * Data loss may occur.
+    * Data is encrypted at rest; operators may access decrypted content when necessary for the service.
     * The Service is not therapy, medical care, counseling, coaching, or crisis support.
     * The Service does not monitor for emergencies.
     * Messages may be processed by third-party AI providers.
