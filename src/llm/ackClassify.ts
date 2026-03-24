@@ -2,7 +2,7 @@ import { LlmViaApi } from "./llmViaApi";
 
 const llm = new LlmViaApi();
 
-export type ClassifyType = "greeting" | "closing" | "trivial" | "summary_request" | "other";
+export type ClassifyType = "greeting" | "closing" | "trivial" | "summary_request" | "guide_query" | "other";
 
 export type ClassifyResult = {
   type: ClassifyType;
@@ -16,6 +16,7 @@ Classify the user's message into exactly one of these types:
 - "closing": user is signing off (bye, good night, gotta go, cya, see you, ttyl, etc.)
 - "trivial": short routine/factual update with NO emotional weight ("had lunch", "at the gym", "going to bed"); also a brief factual answer to a prior bot question when LAST_BOT_REPLY_WAS_QUESTION is true
 - "summary_request": user is explicitly requesting a summary/report/recap to be generated or sent now (any form: "summarize", "send my summary", "sessionbridge", "session bridge report", "give me my report", etc.)
+- "guide_query": user is asking how to use this tool, what it can do, what commands are available; OR complaining about bot behavior or expressing frustration with the tool; OR confused about the tool's purpose. Examples: "how do I use this?", "what can you do?", "what commands are there?", "I don't like your answers", "why are you not chatting with me", "this is not helpful", "you're not responding properly", "I need more help from you", "what is this app?", "explain how this works"
 - "other": everything else — use this as the default
 
 Hard rules (strictly enforced):
@@ -32,6 +33,7 @@ For replyText:
 - "closing": natural sign-off in the user's language. No emojis. (e.g. "Good night.", "Take care.", "Bye.")
 - "trivial": a short ack phrase (e.g. "Got it.", "Noted.", "Heard."). No emojis. The caller will swap this for the rotated phrase.
 - "summary_request": leave replyText as empty string "".
+- "guide_query": leave replyText as empty string "".
 - "other": leave replyText as empty string "".
 
 Output ONLY a single-line JSON object:
@@ -61,7 +63,7 @@ function parseClassifyResult(raw: string): ClassifyResult {
     }
   }
 
-  const VALID_TYPES: ClassifyType[] = ["greeting", "closing", "trivial", "summary_request", "other"];
+  const VALID_TYPES: ClassifyType[] = ["greeting", "closing", "trivial", "summary_request", "guide_query", "other"];
 
   try {
     const parsed = JSON.parse(candidate) as Partial<{ type: string; replyText: string }>;

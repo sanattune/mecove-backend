@@ -27,6 +27,7 @@ import {
   TEST_FEEDBACK_SUCCESS_REPLY,
 } from "../messages/testFeedback";
 import { buildHelpText } from "../commands/registry";
+import { getFullGuide } from "../guides/content";
 import { getConfigName } from "../access/config";
 import { consentConfig } from "../consent/config";
 import {
@@ -419,6 +420,8 @@ const replyWorker = new Worker<GenerateReplyPayload>(
 
     if (command === "/help") {
       replyText = buildHelpText(isAdminUser);
+    } else if (command === "/guide") {
+      replyText = getFullGuide(isAdminUser);
     } else if (command === "/chatlog") {
       const chatlog = await buildAllTimeChatlogMarkdown(userId);
       const filename = `mecove-chatlog-${new Date().toISOString().slice(0, 10)}.md`;
@@ -554,6 +557,47 @@ const replyWorker = new Worker<GenerateReplyPayload>(
           replyText = `Users (${identities.length}):\n${lines.join("\n")}`;
         }
       }
+    } else if (command === "/userstats") {
+      if (!isAdminUser) {
+        replyText = UNKNOWN_COMMAND_TEXT;
+      } else {
+        const [identities, lastMessages] = await Promise.all([
+          prisma.identity.findMany({
+            where: { channel: "whatsapp", user: { approvedAt: { not: null } } },
+            select: { channelUserKey: true, userId: true },
+            orderBy: { createdAt: "asc" },
+          }),
+          prisma.message.groupBy({
+            by: ["userId"],
+            _max: { createdAt: true },
+            where: { category: { not: "test_feedback" } },
+          }),
+        ]);
+        const lastMsgMap = new Map(
+          lastMessages.map((r) => [r.userId, r._max.createdAt])
+        );
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const withActivity = identities.map((i) => {
+          const last = lastMsgMap.get(i.userId) ?? null;
+          return { channelUserKey: i.channelUserKey, last };
+        });
+        withActivity.sort((a, b) => {
+          if (!a.last && !b.last) return 0;
+          if (!a.last) return 1;
+          if (!b.last) return -1;
+          return b.last.getTime() - a.last.getTime();
+        });
+        const lines = withActivity.map(({ channelUserKey: ck, last }) => {
+          const name = getConfigName(ck) ?? ck;
+          if (!last) return `${name} — no messages`;
+          const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+          const diffDays = Math.round((todayStart.getTime() - lastDay.getTime()) / 86400000);
+          const when = diffDays === 0 ? "today" : diffDays === 1 ? "yesterday" : `${diffDays} days ago`;
+          return `${name} — ${when}`;
+        });
+        replyText = `User stats (${lines.length}):\n${lines.join("\n")}`;
+      }
     } else {
       replyText = UNKNOWN_COMMAND_TEXT;
     }
@@ -658,10 +702,16 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
         }
       }
 
+      const batchUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+      const isAdminBatchUser = batchUser?.role === "admin";
+
       let replyText = "Got it.";
       let shouldGenerateSummary = false;
       try {
-        const decision = await generateAckDecision(userId, combinedText);
+        const decision = await generateAckDecision(userId, combinedText, "saved", { isAdmin: isAdminBatchUser });
         if (decision.replyText.trim().length > 0) {
           replyText = decision.replyText.trim();
         }
