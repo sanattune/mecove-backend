@@ -419,6 +419,7 @@ const server = http.createServer(async (req, res) => {
       // Continue normal processing only for text messages once consent is complete.
       if (inbound.type !== "text") {
         sendJSON(res, 200, { ok: true });
+        await sendWhatsAppReply(toDigits, "meCove is a listening space for text — voice notes, images, and other media aren't supported yet. Just type what's on your mind.").catch(() => {});
         return;
       }
       const textBody = inbound.text?.body;

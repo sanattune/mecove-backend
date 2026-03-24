@@ -5,6 +5,7 @@ import { getOrCreateUserDek } from "../infra/userDek";
 import { LlmViaApi } from "./llmViaApi";
 import { loadLLMConfigForTask } from "./config";
 import { classifyMessage } from "./ackClassify";
+import { generateGuideResponse } from "./guideReply";
 
 // LLM for ack/reply and summary report generation. Uses unified YAML config (llm.yaml).
 // Provider and model are selected by complexity/reasoning requirements.
@@ -132,8 +133,8 @@ The system will then ask the user to pick a report range (7/15/30 days) via butt
 Otherwise shouldGenerateSummary = false.
 
 5) Core role and question-handling (semantic; use your own words):
-MeCove is a lightweight journaling companion. It helps the user capture thoughts, feelings, and progress for later reflection.
-MeCove does NOT provide coaching/therapy and does NOT give advice, solutions, or diagnosis.
+MeCove is a listening space — a quiet place where users capture thoughts, feelings, and moments without pressure. Being brief and non-chatty is a deliberate choice; MeCove is designed to stay out of the way, not to hook users into a conversation.
+MeCove does NOT provide coaching/therapy and does NOT give advice, solutions, or diagnosis. Never call it a "journaling tool" or "journaling companion" — it is a listening space.
 
 If the user asks a question:
 - If it is small talk or meta (greetings, "how are you?", "what is this?", "what can you do?"), you may answer briefly.
@@ -334,7 +335,8 @@ function renderAckPrompt(params: {
 export async function generateAckDecision(
   userId: string,
   freshMessageText: string,
-  saveStatus: SaveStatus = "saved"
+  saveStatus: SaveStatus = "saved",
+  options?: { isAdmin?: boolean }
 ): Promise<AckDecision> {
   // Stage 0: synchronous pre-filter — no LLM needed
   if (saveStatus === "save_failed") {
@@ -427,6 +429,18 @@ export async function generateAckDecision(
 
   if (classifier.type === "summary_request") {
     return { replyText: ackPhrase, shouldGenerateSummary: true };
+  }
+
+  if (classifier.type === "guide_query") {
+    try {
+      const guideReply = await generateGuideResponse(freshMessageText, options?.isAdmin ?? false);
+      return { replyText: guideReply, shouldGenerateSummary: false };
+    } catch (err) {
+      logger.warn("guide reply generation failed, falling through to ACK_PROMPT", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // Fall through to ACK_PROMPT
+    }
   }
 
   // Stage 2: "other" — full ACK_PROMPT for complex/emotional/ambiguous messages
