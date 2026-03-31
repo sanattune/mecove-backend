@@ -564,7 +564,7 @@ const replyWorker = new Worker<GenerateReplyPayload>(
         const [identities, lastMessages] = await Promise.all([
           prisma.identity.findMany({
             where: { channel: "whatsapp", user: { approvedAt: { not: null } } },
-            select: { channelUserKey: true, userId: true },
+            select: { channelUserKey: true, userId: true, displayName: true },
             orderBy: { createdAt: "asc" },
           }),
           prisma.message.groupBy({
@@ -580,7 +580,7 @@ const replyWorker = new Worker<GenerateReplyPayload>(
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const withActivity = identities.map((i) => {
           const last = lastMsgMap.get(i.userId) ?? null;
-          return { channelUserKey: i.channelUserKey, last };
+          return { channelUserKey: i.channelUserKey, displayName: i.displayName, last };
         });
         withActivity.sort((a, b) => {
           if (!a.last && !b.last) return 0;
@@ -588,8 +588,8 @@ const replyWorker = new Worker<GenerateReplyPayload>(
           if (!b.last) return -1;
           return b.last.getTime() - a.last.getTime();
         });
-        const lines = withActivity.map(({ channelUserKey: ck, last }) => {
-          const name = getConfigName(ck) ?? ck;
+        const lines = withActivity.map(({ channelUserKey: ck, displayName, last }) => {
+          const name = displayName?.trim() || getConfigName(ck) || ck;
           if (!last) return `${name} — no messages`;
           const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
           const diffDays = Math.round((todayStart.getTime() - lastDay.getTime()) / 86400000);
