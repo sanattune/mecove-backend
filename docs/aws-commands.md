@@ -129,7 +129,7 @@ sudo -u mecove bash -lc 'cd /home/mecove/app && pnpm db:smoke'
 Seed from a hand-written JSON file:
 
 ```bash
-sudo -u mecove bash -lc 'cd /home/mecove/app && pnpm seed:chat seed/chat-data/chat1.json --clear'
+sudo -u mecove bash -lc 'cd /home/mecove/app && pnpm seed:chat seed/chat-data/chat1.json --phone +919876543210 --clear'
 ```
 
 LLM-generate chat data from a YAML config (and optionally seed DB):

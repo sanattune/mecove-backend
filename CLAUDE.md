@@ -54,21 +54,16 @@ No test framework is currently configured.
 1. WhatsApp message arrives at `POST /webhooks/whatsapp`
 2. Server validates signature, upserts User/Identity, stores Message
 3. Messages are batched in Redis (`replyBatch/state.ts`) with debounce (5s) and max-wait (15s)
-4. When batch flushes, worker runs a two-stage reply pipeline (`llm/ackReply.ts`):
-   - **Stage 1 — micro-classifier** (`llm/ackClassify.ts`): cheap LLM call. Classifies into: `greeting`, `closing`, `trivial`, `summary_request`, `guide_query`, `other`. Receives the last 3 exchanges (up to 6 lines) as `RECENT_CONTEXT` for disambiguation. Simple cases are handled directly without Stage 2. Classifier descriptions are intent-based (not phrase lists) so the LLM uses its full language understanding.
-   - **Stage 2 — full ACK_PROMPT**: only runs for `other`. Uses last 10 messages of conversation history, applies safety policies, reply composition rules, and question-asking logic.
-5. `guide_query` messages are routed to `llm/guideReply.ts` instead of ACK_PROMPT
-6. If the decision includes `shouldGenerateSummary: true`, a summary range prompt (buttons) is sent and a summary job is enqueued
+4. When batch flushes, worker runs the reply pipeline (`llm/ackReply.ts`) — see `src/llm/CLAUDE.md` for full classification and routing details
+5. If the decision includes `shouldGenerateSummary: true`, a summary range prompt (buttons) is sent and a summary job is enqueued
 
-**Summary pipeline** (`src/summary/pipeline.ts`):
-Multi-stage LLM pipeline: canonicalize → write sections → guard/fix → assemble HTML → render PDF via Puppeteer → send via WhatsApp. Falls back to a minimal markdown report on failure.
-
-**Key subsystems:**
-- `src/llm/` — YAML-driven LLM config, model selection by complexity/reasoning needs, unified API client for multiple providers
-- `src/queues/` — Three BullMQ queues: summaryQueue, replyQueue, replyBatchQueue
-- `src/consent/` — YAML-configured consent gating flow; blocks service until user accepts
+**Key subsystems** (see `CLAUDE.md` in each directory for details):
+- `src/llm/` — reply pipeline: classification, routing, LLM config
+- `src/summary/` — multi-stage summary pipeline, PDF generation
+- `src/infra/` — shared services: encryption, Prisma, Redis, WhatsApp client, PDF, logger
+- `src/queues/` — three BullMQ queues: summaryQueue, replyQueue, replyBatchQueue
+- `src/consent/` — YAML-configured consent gating flow
 - `src/replyBatch/` — Redis-based message batching with atomic lock for flush
-- `src/infra/` — Prisma client, Redis connection, WhatsApp API client, PDF generation, logger
 
 ## Database
 
