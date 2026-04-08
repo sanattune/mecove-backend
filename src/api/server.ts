@@ -46,6 +46,12 @@ type WhatsAppWebhookPayload = {
   entry?: Array<{
     changes?: Array<{
       value?: {
+        contacts?: Array<{
+          profile?: {
+            name?: string;
+          };
+          wa_id?: string;
+        }>;
         messages?: WhatsAppMessageNode[];
       };
     }>;
@@ -106,6 +112,13 @@ function normalizeChannelUserKey(raw: string): string {
 
 function getInboundMessage(body: WhatsAppWebhookPayload): WhatsAppMessageNode | null {
   return body.entry?.[0]?.changes?.[0]?.value?.messages?.[0] ?? null;
+}
+
+function getInboundProfileName(body: WhatsAppWebhookPayload): string | null {
+  const rawName = body.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.profile?.name;
+  if (typeof rawName !== "string") return null;
+  const trimmed = rawName.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function parseCommand(messageText: string): string | null {
@@ -248,6 +261,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const inbound = getInboundMessage(body);
+      const inboundProfileName = getInboundProfileName(body);
       if (!inbound?.from) {
         sendJSON(res, 200, { ok: true });
         return;
@@ -279,7 +293,19 @@ const server = http.createServer(async (req, res) => {
             userId: user.id,
             channel: "whatsapp",
             channelUserKey,
+            displayName: inboundProfileName,
           },
+          include: { user: true },
+        });
+      } else if (inboundProfileName && identity.displayName !== inboundProfileName) {
+        identity = await prisma.identity.update({
+          where: {
+            channel_channelUserKey: {
+              channel: "whatsapp",
+              channelUserKey,
+            },
+          },
+          data: { displayName: inboundProfileName },
           include: { user: true },
         });
       }
