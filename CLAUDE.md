@@ -55,7 +55,7 @@ No test framework is currently configured.
 2. Server validates signature, upserts User/Identity, stores Message
 3. Messages are batched in Redis (`replyBatch/state.ts`) with debounce (5s) and max-wait (15s)
 4. When batch flushes, worker runs a two-stage reply pipeline (`llm/ackReply.ts`):
-   - **Stage 1 — micro-classifier** (`llm/ackClassify.ts`): cheap LLM call, no history. Classifies into: `greeting`, `closing`, `trivial`, `summary_request`, `guide_query`, `other`. Simple cases are handled directly without Stage 2.
+   - **Stage 1 — micro-classifier** (`llm/ackClassify.ts`): cheap LLM call. Classifies into: `greeting`, `closing`, `trivial`, `summary_request`, `guide_query`, `other`. Receives the last 3 exchanges (up to 6 lines) as `RECENT_CONTEXT` for disambiguation. Simple cases are handled directly without Stage 2. Classifier descriptions are intent-based (not phrase lists) so the LLM uses its full language understanding.
    - **Stage 2 — full ACK_PROMPT**: only runs for `other`. Uses last 10 messages of conversation history, applies safety policies, reply composition rules, and question-asking logic.
 5. `guide_query` messages are routed to `llm/guideReply.ts` instead of ACK_PROMPT
 6. If the decision includes `shouldGenerateSummary: true`, a summary range prompt (buttons) is sent and a summary job is enqueued
