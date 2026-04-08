@@ -6,6 +6,7 @@ import { LlmViaApi } from "./llmViaApi";
 import { loadLLMConfigForTask } from "./config";
 import { classifyMessage } from "./ackClassify";
 import { generateGuideResponse } from "./guideReply";
+import { generateGreetingResponse } from "./greetingReply";
 
 // LLM for ack/reply and summary report generation. Uses unified YAML config (llm.yaml).
 // Provider and model are selected by complexity/reasoning requirements.
@@ -419,7 +420,21 @@ export async function generateAckDecision(
   });
 
   // Route based on classifier result
-  if (classifier.type === "greeting" || classifier.type === "closing") {
+  if (classifier.type === "closing") {
+    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateSummary: false };
+  }
+
+  if (classifier.type === "greeting") {
+    try {
+      const greetingReply = await generateGreetingResponse(userId, freshMessageText);
+      if (greetingReply) {
+        return { replyText: greetingReply, shouldGenerateSummary: false };
+      }
+    } catch (err) {
+      logger.warn("greeting reply generation failed, using classifier reply", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateSummary: false };
   }
 
