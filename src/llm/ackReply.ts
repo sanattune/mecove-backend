@@ -400,8 +400,11 @@ export async function generateAckDecision(
     // ignore
   }
 
-  // Stage 1: micro-classifier — cheap call to handle simple cases without full history
-  const classifier = await classifyMessage(freshMessageText, lastBotReplyWasQuestion);
+  // Stage 1: micro-classifier — pass the last 3 exchanges as context so the classifier
+  // can disambiguate intent (e.g. "what's going on" as greeting vs. emotional follow-up)
+  const recentContextLines = lines.slice(-6); // up to 3 user+bot pairs
+  const recentContext = recentContextLines.length > 0 ? recentContextLines.join("\n") : undefined;
+  const classifier = await classifyMessage(freshMessageText, lastBotReplyWasQuestion, recentContext);
 
   logger.info("ack reply", {
     model: modelName,

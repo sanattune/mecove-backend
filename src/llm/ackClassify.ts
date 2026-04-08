@@ -9,15 +9,18 @@ export type ClassifyResult = {
   replyText: string;
 };
 
-const CLASSIFY_PROMPT = `You are a message classifier for a WhatsApp journaling app.
+const CLASSIFY_PROMPT = `You are a message classifier for a WhatsApp journaling app called MeCove.
 
-Classify the user's message into exactly one of these types:
-- "greeting": user is greeting (hi, hello, good morning, hey, sup, namaste, etc.)
-- "closing": user is signing off (bye, good night, gotta go, cya, see you, ttyl, etc.)
-- "trivial": short routine/factual update with NO emotional weight ("had lunch", "at the gym", "going to bed"); also a brief factual answer to a prior bot question when LAST_BOT_REPLY_WAS_QUESTION is true
-- "summary_request": user is explicitly requesting a summary/report/recap to be generated or sent now (any form: "summarize", "send my summary", "sessionbridge", "session bridge report", "give me my report", etc.)
-- "guide_query": user is asking how to use this tool, what it can do, what commands are available; OR complaining about bot behavior or expressing frustration with the tool; OR confused about the tool's purpose. Examples: "how do I use this?", "what can you do?", "what commands are there?", "I don't like your answers", "why are you not chatting with me", "this is not helpful", "you're not responding properly", "I need more help from you", "what is this app?", "explain how this works"
-- "other": everything else — use this as the default
+Your job is to classify the user's latest message into exactly one of these types.
+Use the RECENT_CONTEXT (last few exchanges) to understand the full intent — the same words can mean very different things depending on what came before.
+
+Types:
+- "greeting": the user is opening the conversation socially with no substantive content — any casual hello, opener, or social pleasantry in any language or phrasing. Includes things like "what's going on", "what's up", "how are things", "how are you", etc. when used as openers, not as expressions of distress.
+- "closing": the user is wrapping up or signing off — any farewell, good night, or sign-off in any language or phrasing.
+- "trivial": a brief, purely factual or routine update with no emotional weight and nothing to explore — the kind of thing someone logs in passing. Also includes a short factual answer to the bot's prior question when LAST_BOT_REPLY_WAS_QUESTION is true.
+- "summary_request": the user is explicitly asking for a summary or report to be generated or sent now, in any phrasing.
+- "guide_query": the user is asking how the tool works, what it can do, or what commands are available; OR expressing frustration or confusion specifically about the bot's behavior or purpose.
+- "other": default — use this for anything with emotional weight, reflective content, advice-seeking, ambiguity, or anything that doesn't clearly fit the above.
 
 Hard rules (strictly enforced):
 - Default to "other" whenever uncertain. When in doubt, output "other".
@@ -26,11 +29,11 @@ Hard rules (strictly enforced):
 - Any advice-seeking or question-seeking from the user → always "other".
 - Any obscene or sexual content → always "other".
 - A message that combines emotional content with a summary request → always "other".
-- Only classify as "trivial" if the message is genuinely brief and purely factual/routine.
+- "greeting" only when the message is clearly a social opener with no substance — if RECENT_CONTEXT shows the user has been sharing something heavy, treat ambiguous openers as "other".
 
 For replyText:
-- "greeting": natural greeting back in the user's language. No emojis. (e.g. "Good morning.", "Hello.", "Hey.")
-- "closing": natural sign-off in the user's language. No emojis. (e.g. "Good night.", "Take care.", "Bye.")
+- "greeting": a natural greeting back in the user's language. No emojis. Match their register — casual if they're casual. (e.g. "Hey.", "Good morning.", "Not much, what's on your mind?")
+- "closing": a natural sign-off in the user's language. No emojis. (e.g. "Good night.", "Take care.", "Bye.")
 - "trivial": a short ack phrase (e.g. "Got it.", "Noted.", "Heard."). No emojis. The caller will swap this for the rotated phrase.
 - "summary_request": leave replyText as empty string "".
 - "guide_query": leave replyText as empty string "".
@@ -42,6 +45,8 @@ No markdown, no code fences, no extra keys, no commentary.
 
 Inputs:
 LAST_BOT_REPLY_WAS_QUESTION: {{LAST_BOT_REPLY_WAS_QUESTION}}
+RECENT_CONTEXT (last few exchanges, oldest first — empty if no prior conversation):
+{{RECENT_CONTEXT}}
 USER_MESSAGE: {{USER_MESSAGE}}
 
 Your JSON response:`;
@@ -79,10 +84,13 @@ function parseClassifyResult(raw: string): ClassifyResult {
 
 export async function classifyMessage(
   freshMessageText: string,
-  lastBotReplyWasQuestion: boolean
+  lastBotReplyWasQuestion: boolean,
+  recentContext?: string
 ): Promise<ClassifyResult> {
   const prompt = CLASSIFY_PROMPT.split("{{LAST_BOT_REPLY_WAS_QUESTION}}")
     .join(String(lastBotReplyWasQuestion))
+    .split("{{RECENT_CONTEXT}}")
+    .join(recentContext?.trim() || "(none)")
     .split("{{USER_MESSAGE}}")
     .join(freshMessageText);
 
