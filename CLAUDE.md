@@ -53,7 +53,7 @@ No test framework is currently configured.
 **Message flow:**
 1. WhatsApp message arrives at `POST /webhooks/whatsapp`
 2. Server validates signature, upserts User/Identity, stores Message
-3. Any message starting with `/` is a **direct command** — bypasses batching entirely, enqueued to `replyQueue` with `mode: "command"`
+3. Any message starting with `/` is a **direct command** — bypasses batching entirely, enqueued to `replyQueue` with `mode: "command"`; see `src/commands/CLAUDE.md` for command routing details
 4. Interactive button replies (summary range, check-in time selection) are intercepted before the text guard via Redis pending-key gates
 5. Regular text messages are batched in Redis (`replyBatch/state.ts`) with debounce (5s) and max-wait (15s)
 6. When batch flushes, worker runs the reply pipeline (`llm/ackReply.ts`) — see `src/llm/CLAUDE.md` for full classification and routing details
@@ -66,8 +66,9 @@ No test framework is currently configured.
 - `summary_request` — message that triggered a summary; excluded from report windows
 
 **Key subsystems** (see `CLAUDE.md` in each directory for details):
+- `src/commands/` — slash command handling: registry, router, one file per command under user/ and admin/
 - `src/llm/` — LLM pipeline: classify/, reply/ack|greeting|guide/, context/, config, client
-- `src/summary/` — multi-stage summary pipeline, PDF generation
+- `src/summary/` — multi-stage summary pipeline, PDF generation; `keys.ts` holds shared Redis key helpers
 - `src/infra/` — shared services: encryption, Prisma, Redis, WhatsApp client, PDF, logger
 - `src/queues/` — four BullMQ queues: summaryQueue, replyQueue, replyBatchQueue, reminderQueue
 - `src/consent/` — YAML-configured consent gating flow
@@ -79,6 +80,10 @@ No test framework is currently configured.
 Prisma schema at `prisma/schema.prisma`. Config in `prisma.config.ts` (resolves DATABASE_URL or builds from DB_HOST/DB_USER/DB_PASSWORD/DB_NAME; auto-adds SSL for RDS).
 
 **Models:** User → Identity (channel binding) → Message. Summary links to User. UserSettings (1-to-1 with User, created eagerly) holds per-user preferences: `timezone`, `lastNudgedAt`. UserReminder holds scheduled check-ins per user.
+
+**Key Message fields:**
+- `category` — broad filter bucket: `user_message`, `command_reply`, `test_feedback`, `summary_request`
+- `classifierType` — fine-grained LLM output: `journal_entry`, `greeting`, `trivial`, `closing`, `summary_request`, `guide_query`, `setup_checkin`; set on the latest message in each batch after reply generation; used for engagement scoring in `/userstats`
 
 ## Environment Variables
 

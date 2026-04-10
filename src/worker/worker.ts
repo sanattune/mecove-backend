@@ -22,16 +22,8 @@ import {
 import { generateAckDecision } from "../llm/reply/ack/ackReply";
 import { decryptText, encryptText, getKek } from "../infra/encryption";
 import { getOrCreateUserDek } from "../infra/userDek";
+import { handleCheckinIntent } from "../engagement/checkin/handler";
 import {
-  TEST_FEEDBACK_COMMAND,
-  TEST_FEEDBACK_SUCCESS_REPLY,
-} from "../messages/testFeedback";
-import { buildHelpText } from "../commands/registry";
-import { getFullGuide } from "../guides/content";
-import { getConfigName } from "../access/config";
-import { consentConfig } from "../consent/config";
-import {
-  sendWhatsAppBufferDocument,
   sendWhatsAppButtons,
   sendWhatsAppDocument,
   sendWhatsAppReply,
@@ -40,8 +32,7 @@ import {
 import { buildWindowBundle } from "../summary/windowBuilder";
 import { buildMinimalFallbackReport } from "../summary/reportAssembler";
 import { generateSummaryPipeline } from "../summary/pipeline";
-import { clearSummaryArtifactsForUser } from "../summary/redisArtifacts";
-import { handleCheckinIntent } from "../engagement/checkin/handler";
+import { summaryLockKey, summaryRangePromptKey } from "../summary/keys";
 import {
   REMINDER_QUEUE_NAME,
   JOB_NAME_SCAN_REMINDERS,
@@ -65,6 +56,7 @@ import {
   restoreClaimedBatch,
   type ClaimedReplyBatch,
 } from "../replyBatch/state";
+import { handleCommand } from "../commands/handler";
 
 // Fail fast on startup
 if (!process.env.REDIS_URL?.trim()) {
@@ -88,19 +80,9 @@ const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
 const SUMMARY_ALREADY_RUNNING_TEXT =
   "Your previous summary is still being generated. Please wait.";
 const SUMMARY_TIMEOUT_TEXT = "Summary generation timed out. Please request again.";
-const CHATLOG_SENT_TEXT = "I have sent your chat log as an attachment.";
-const CHAT_CLEARED_TEXT = "Your chat history has been cleared.";
-const UNKNOWN_COMMAND_TEXT = "Unknown command. Type /help to see available commands.";
 const BUSY_NOTICE_TEXT =
   "Please wait, I am processing your previous message. Retry command in a moment.";
 
-type BatchDueReason = "quiet" | "max_cap";
-
-function summaryLockKey(userId: string): string {
-  return `summary:inflight:${userId}`;
-}
-
-const SUMMARY_RANGE_PROMPT_KEY_VERSION = "v1";
 const SUMMARY_RANGE_PROMPT_TTL_SECONDS = 10 * 60;
 const SUMMARY_RANGE_PROMPT_TEXT =
   "It seems like you'd like a SessionBridge report summary. If so, select the period below. If not, just keep chatting \u2014 no report will be generated unless you press a button.";
@@ -110,12 +92,10 @@ const SUMMARY_RANGE_BUTTONS: Array<{ id: string; title: string }> = [
   { id: "summary_range_30", title: "Last 30 days" },
 ];
 
+type BatchDueReason = "quiet" | "max_cap";
+
 async function sendSummaryRangePrompts(channelUserKey: string): Promise<void> {
   await sendWhatsAppButtons(channelUserKey, SUMMARY_RANGE_PROMPT_TEXT, SUMMARY_RANGE_BUTTONS);
-}
-
-function summaryRangePromptKey(userId: string): string {
-  return `summary:range_prompt:${SUMMARY_RANGE_PROMPT_KEY_VERSION}:${userId}`;
 }
 
 function parseCommand(messageText: string): string | null {
@@ -124,63 +104,6 @@ function parseCommand(messageText: string): string | null {
   return trimmed.split(/\s+/)[0].toLowerCase();
 }
 
-async function buildAllTimeChatlogMarkdown(userId: string): Promise<string> {
-  const messages = await prisma.message.findMany({
-    where: { userId },
-    orderBy: { createdAt: "asc" },
-    select: { createdAt: true, text: true, replyText: true, repliedAt: true, category: true },
-  });
-
-  const dek = await getOrCreateUserDek(userId);
-  for (const m of messages) {
-    if (m.text) m.text = decryptText(m.text, dek);
-    if (m.replyText) m.replyText = decryptText(m.replyText, dek);
-  }
-
-  const formatTime = (d: Date): string =>
-    d.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    });
-
-  const lines: string[] = [];
-  lines.push("# MeCove Chat Log");
-  lines.push("");
-  lines.push(`Generated: ${new Date().toISOString()}`);
-  lines.push("");
-
-  let currentDateHeader = "";
-  let hasAnyMessage = false;
-
-  for (const m of messages) {
-    if (m.category === "test_feedback" || m.category === "command_reply") continue;
-    const userText = (m.text ?? "").trim();
-    if (!userText) continue;
-
-    hasAnyMessage = true;
-    const dateHeader = m.createdAt.toISOString().slice(0, 10);
-    if (dateHeader !== currentDateHeader) {
-      currentDateHeader = dateHeader;
-      lines.push(`## ${dateHeader}`);
-      lines.push("");
-    }
-
-    lines.push(`User(${formatTime(m.createdAt)}): ${userText}`);
-    if (m.replyText && m.repliedAt) {
-      lines.push(`Bot(${formatTime(m.repliedAt)}): ${m.replyText.trim()}`);
-    }
-    lines.push("");
-  }
-
-  if (!hasAnyMessage) {
-    lines.push("_No chat messages available._");
-    lines.push("");
-  }
-
-  return lines.join("\n");
-}
 
 function evaluateBatchDue(nowMs: number, startAtMs: number, lastAtMs: number): {
   dueReason: BatchDueReason | null;
@@ -419,219 +342,25 @@ const replyWorker = new Worker<GenerateReplyPayload>(
       return;
     }
 
-    // Fetch sender role once — needed for /help and admin commands
     const sender = await prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },
     });
     const isAdminUser = sender?.role === "admin";
 
-    let replyText = CHATLOG_SENT_TEXT;
+    const result = await handleCommand({ userId, messageId, channelUserKey, messageText, isAdminUser, command });
 
-    if (command === "/help") {
-      replyText = buildHelpText(isAdminUser);
-    } else if (command === "/guide") {
-      replyText = getFullGuide(isAdminUser);
-    } else if (command === "/chatlog") {
-      const chatlog = await buildAllTimeChatlogMarkdown(userId);
-      const filename = `mecove-chatlog-${new Date().toISOString().slice(0, 10)}.md`;
-      await sendWhatsAppBufferDocument(
-        channelUserKey,
-        Buffer.from(chatlog, "utf8"),
-        filename,
-        "text/plain",
-        "Your chat log is ready."
-      );
-    } else if (command === "/clear") {
-      await prisma.$transaction([
-        prisma.summary.deleteMany({ where: { userId } }),
-        prisma.message.deleteMany({ where: { userId } }),
-      ]);
-      await getRedis().del(summaryLockKey(userId), summaryRangePromptKey(userId));
-      await clearReplyBatchState(userId);
-      await clearSummaryArtifactsForUser(userId);
-      replyText = CHAT_CLEARED_TEXT;
-    } else if (command === "/stats") {
-      const [messageCount, firstMessage, lastSummary] = await Promise.all([
-        prisma.message.count({ where: { userId, category: { not: "test_feedback" } } }),
-        prisma.message.findFirst({
-          where: { userId, category: { not: "test_feedback" } },
-          orderBy: { createdAt: "asc" },
-          select: { createdAt: true },
-        }),
-        prisma.summary.findFirst({
-          where: { userId, status: { in: ["success", "success_fallback"] } },
-          orderBy: { createdAt: "desc" },
-          select: { createdAt: true },
-        }),
-      ]);
-      const memberSince = firstMessage
-        ? firstMessage.createdAt.toISOString().slice(0, 10)
-        : null;
-      const lastReport = lastSummary
-        ? lastSummary.createdAt.toISOString().slice(0, 10)
-        : "none";
-      const sinceText = memberSince ? ` since ${memberSince}` : "";
-      replyText = `${messageCount} message${messageCount === 1 ? "" : "s"} logged${sinceText}.\nLast SessionBridge report: ${lastReport}.`;
-    } else if (command === "/privacy") {
-      const mvp = consentConfig.mvp;
-      const parts: string[] = [];
-      if (mvp.link) parts.push(`Privacy & Usage Notice: ${mvp.link}`);
-      parts.push(mvp.message);
-      replyText = parts.join("\n\n");
-    } else if (command === TEST_FEEDBACK_COMMAND) {
-      replyText = TEST_FEEDBACK_SUCCESS_REPLY;
-    } else if (command === "/approve") {
-      if (!isAdminUser) {
-        replyText = UNKNOWN_COMMAND_TEXT;
-      } else {
-        const phoneArg = messageText.trim().split(/\s+/)[1]?.trim() ?? "";
-        const normalizedPhone = phoneArg.startsWith("+") ? phoneArg : `+${phoneArg}`;
-        const targetIdentity = await prisma.identity.findUnique({
-          where: {
-            channel_channelUserKey: { channel: "whatsapp", channelUserKey: normalizedPhone },
-          },
-          include: { user: true },
-        });
-        if (!targetIdentity) {
-          replyText = `No user found for ${normalizedPhone}.`;
-        } else if (targetIdentity.user.approvedAt) {
-          replyText = `${normalizedPhone} is already approved.`;
-        } else {
-          await prisma.user.update({
-            where: { id: targetIdentity.userId },
-            data: { approvedAt: new Date() },
-          });
-          replyText = `${normalizedPhone} approved.`;
-        }
-      }
-    } else if (command === "/waitlist") {
-      if (!isAdminUser) {
-        replyText = UNKNOWN_COMMAND_TEXT;
-      } else {
-        const waitlisted = await prisma.identity.findMany({
-          where: { channel: "whatsapp", user: { approvedAt: null } },
-          select: { channelUserKey: true, createdAt: true },
-          orderBy: { createdAt: "asc" },
-        });
-        if (waitlisted.length === 0) {
-          replyText = "No users on the waitlist.";
-        } else {
-          const lines = waitlisted.map(
-            (i) => `${i.channelUserKey} (since ${i.createdAt.toISOString().slice(0, 10)})`
-          );
-          replyText = `Waitlist (${waitlisted.length}):\n${lines.join("\n")}`;
-        }
-      }
-    } else if (command === "/revoke") {
-      if (!isAdminUser) {
-        replyText = UNKNOWN_COMMAND_TEXT;
-      } else {
-        const phoneArg = messageText.trim().split(/\s+/)[1]?.trim() ?? "";
-        const normalizedPhone = phoneArg.startsWith("+") ? phoneArg : `+${phoneArg}`;
-        const targetIdentity = await prisma.identity.findUnique({
-          where: {
-            channel_channelUserKey: { channel: "whatsapp", channelUserKey: normalizedPhone },
-          },
-          include: { user: true },
-        });
-        if (!targetIdentity) {
-          replyText = `No user found for ${normalizedPhone}.`;
-        } else if (!targetIdentity.user.approvedAt) {
-          replyText = `${normalizedPhone} is not currently approved.`;
-        } else {
-          await prisma.user.update({
-            where: { id: targetIdentity.userId },
-            data: { approvedAt: null },
-          });
-          replyText = `${normalizedPhone} revoked.`;
-        }
-      }
-    } else if (command === "/users") {
-      if (!isAdminUser) {
-        replyText = UNKNOWN_COMMAND_TEXT;
-      } else {
-        const identities = await prisma.identity.findMany({
-          where: { channel: "whatsapp", user: { approvedAt: { not: null } } },
-          select: { channelUserKey: true, user: { select: { role: true } } },
-          orderBy: { createdAt: "asc" },
-        });
-        if (identities.length === 0) {
-          replyText = "No approved users.";
-        } else {
-          const lines = identities.map((i) => {
-            const name = getConfigName(i.channelUserKey);
-            const tag = i.user.role === "admin" ? " [admin]" : "";
-            return name ? `${name} (${i.channelUserKey})${tag}` : `${i.channelUserKey}${tag}`;
-          });
-          replyText = `Users (${identities.length}):\n${lines.join("\n")}`;
-        }
-      }
-    } else if (command === "/userstats") {
-      if (!isAdminUser) {
-        replyText = UNKNOWN_COMMAND_TEXT;
-      } else {
-        const [identities, lastMessages] = await Promise.all([
-          prisma.identity.findMany({
-            where: { channel: "whatsapp", user: { approvedAt: { not: null } } },
-            select: { channelUserKey: true, userId: true, displayName: true },
-            orderBy: { createdAt: "asc" },
-          }),
-          prisma.message.groupBy({
-            by: ["userId"],
-            _max: { createdAt: true },
-            where: { category: { not: "test_feedback" } },
-          }),
-        ]);
-        const lastMsgMap = new Map(
-          lastMessages.map((r) => [r.userId, r._max.createdAt])
-        );
-        const now = new Date();
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const withActivity = identities.map((i) => {
-          const last = lastMsgMap.get(i.userId) ?? null;
-          return { channelUserKey: i.channelUserKey, displayName: i.displayName, last };
-        });
-        withActivity.sort((a, b) => {
-          if (!a.last && !b.last) return 0;
-          if (!a.last) return 1;
-          if (!b.last) return -1;
-          return b.last.getTime() - a.last.getTime();
-        });
-        const lines = withActivity.map(({ channelUserKey: ck, displayName, last }) => {
-          const name = displayName?.trim() || getConfigName(ck) || ck;
-          if (!last) return `${name} — no messages`;
-          const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
-          const diffDays = Math.round((todayStart.getTime() - lastDay.getTime()) / 86400000);
-          const when = diffDays === 0 ? "today" : diffDays === 1 ? "yesterday" : `${diffDays} days ago`;
-          return `${name} — ${when}`;
-        });
-        replyText = `User stats (${lines.length}):\n${lines.join("\n")}`;
-      }
-    } else if (command === "/checkin") {
-      const checkinBodyText = await handleCheckinIntent({ userId, channelUserKey });
-      const checkinDek = await getOrCreateUserDek(userId);
-      await prisma.message.update({
-        where: { id: messageId },
-        data: {
-          repliedAt: new Date(),
-          replyText: encryptText(checkinBodyText, checkinDek),
-        },
-      });
-      return;
-    } else {
-      replyText = UNKNOWN_COMMAND_TEXT;
-    }
+    if (result.kind === "handled") return;
 
-    await sendWhatsAppReply(channelUserKey, replyText);
+    await sendWhatsAppReply(channelUserKey, result.text);
 
-    if (command !== "/clear") {
+    if (result.kind === "reply") {
       const cmdDek = await getOrCreateUserDek(userId);
       await prisma.message.update({
         where: { id: messageId },
         data: {
           repliedAt: new Date(),
-          replyText: encryptText(replyText, cmdDek),
+          replyText: encryptText(result.text, cmdDek),
         },
       });
     }
@@ -732,6 +461,7 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
       let replyText = "Got it.";
       let shouldGenerateSummary = false;
       let shouldSetupCheckin = false;
+      let decisionClassifierType: string | undefined;
       try {
         const decision = await generateAckDecision(userId, combinedText, "saved", { isAdmin: isAdminBatchUser });
         if (decision.replyText.trim().length > 0) {
@@ -739,6 +469,7 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
         }
         shouldGenerateSummary = decision.shouldGenerateSummary;
         shouldSetupCheckin = decision.shouldSetupCheckin ?? false;
+        decisionClassifierType = decision.classifierType;
         logger.info("ack decision summary flag", {
           userId,
           shouldGenerateSummary,
@@ -797,6 +528,7 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
             data: {
               repliedAt: new Date(),
               replyText: encryptText(replyText, batchDek),
+              ...(decisionClassifierType ? { classifierType: decisionClassifierType } : {}),
             },
           });
         } catch (err) {
