@@ -13,6 +13,13 @@ import { prisma } from "../infra/prisma";
 import { getRedis } from "../infra/redis";
 import { sendWhatsAppButtons, sendWhatsAppReply } from "../infra/whatsapp";
 import {
+  CHECKIN_TIME_ACTION_IDS,
+  checkinPendingKey,
+  setCheckinReminder,
+  turnOffCheckinReminder,
+  type CheckinTime,
+} from "../checkin/handler";
+import {
   parseTestFeedbackCommand,
   TEST_FEEDBACK_MISSING_REPLY,
   toStoredTestFeedback,
@@ -286,6 +293,7 @@ const server = http.createServer(async (req, res) => {
             role: isAdmin(channelUserKey) ? "admin" : "user",
             approvedAt:
               isAdmin(channelUserKey) || isAllowlisted(channelUserKey) ? new Date() : null,
+            settings: { create: {} },
           },
         });
         identity = await prisma.identity.create({
@@ -442,6 +450,37 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      // Check-in time selection gate (only when consent is complete).
+      // If the user previously triggered /checkin or NL setup_checkin, we sent buttons.
+      // The next interactive press is handled here and short-circuits normal processing.
+      {
+        const redis = getRedis();
+        const promptKey = checkinPendingKey(user.id);
+        const hasPendingCheckin = (await redis.exists(promptKey)) > 0;
+        if (hasPendingCheckin) {
+          const actionId = extractInboundActionId(inbound);
+          const selectedTime = actionId ? CHECKIN_TIME_ACTION_IDS[actionId] : undefined;
+          const isTurnOff = actionId === "checkin_off";
+
+          if (selectedTime) {
+            await redis.del(promptKey);
+            await setCheckinReminder({ userId: user.id, time: selectedTime as CheckinTime, toDigits });
+            sendJSON(res, 200, { ok: true });
+            return;
+          }
+
+          if (isTurnOff) {
+            await redis.del(promptKey);
+            await turnOffCheckinReminder({ userId: user.id, toDigits });
+            sendJSON(res, 200, { ok: true });
+            return;
+          }
+
+          // Not a checkin button press — clear pending state and fall through to normal processing
+          await redis.del(promptKey);
+        }
+      }
+
       // Continue normal processing only for text messages once consent is complete.
       if (inbound.type !== "text") {
         sendJSON(res, 200, { ok: true });
@@ -474,6 +513,8 @@ const server = http.createServer(async (req, res) => {
       const messageCategory =
         !pendingBatch && feedbackCommand.isCommand && feedbackCommand.feedback
           ? "test_feedback"
+          : command
+          ? "command_reply"
           : "user_message";
 
       const dek = await getOrCreateUserDek(user.id);
