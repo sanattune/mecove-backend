@@ -18,7 +18,7 @@ import {
   setCheckinReminder,
   turnOffCheckinReminder,
   type CheckinTime,
-} from "../checkin/handler";
+} from "../engagement/checkin/handler";
 import {
   parseTestFeedbackCommand,
   TEST_FEEDBACK_MISSING_REPLY,

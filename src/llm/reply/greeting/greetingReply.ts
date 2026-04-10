@@ -1,6 +1,6 @@
-import { logger } from "../infra/logger";
-import { LlmViaApi } from "./llmViaApi";
-import { fetchFormattedMessageLines } from "./messageContext";
+import { logger } from "../../../infra/logger";
+import { LlmViaApi } from "../../llmViaApi";
+import { fetchFormattedMessageLines } from "../../context/messageContext";
 
 const llm = new LlmViaApi();
 

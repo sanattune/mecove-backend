@@ -1,10 +1,10 @@
-import { logger } from "../infra/logger";
-import { LlmViaApi } from "./llmViaApi";
-import { fetchFormattedMessageLines } from "./messageContext";
-import { loadLLMConfigForTask } from "./config";
-import { classifyMessage } from "./ackClassify";
-import { generateGuideResponse } from "./guideReply";
-import { generateGreetingResponse } from "./greetingReply";
+import { logger } from "../../../infra/logger";
+import { LlmViaApi } from "../../llmViaApi";
+import { fetchFormattedMessageLines } from "../../context/messageContext";
+import { loadLLMConfigForTask } from "../../config";
+import { classifyMessage } from "../../classify/ackClassify";
+import { generateGuideResponse } from "../guide/guideReply";
+import { generateGreetingResponse } from "../greeting/greetingReply";
 
 // LLM for ack/reply and summary report generation. Uses unified YAML config (llm.yaml).
 // Provider and model are selected by complexity/reasoning requirements.

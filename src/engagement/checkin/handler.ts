@@ -1,6 +1,6 @@
-import { prisma } from "../infra/prisma";
-import { getRedis } from "../infra/redis";
-import { sendWhatsAppButtons, sendWhatsAppReply } from "../infra/whatsapp";
+import { prisma } from "../../infra/prisma";
+import { getRedis } from "../../infra/redis";
+import { sendWhatsAppButtons, sendWhatsAppReply } from "../../infra/whatsapp";
 
 export const CHECKIN_PROMPT_KEY_VERSION = "v1";
 export const CHECKIN_PROMPT_TTL_SECONDS = 10 * 60;

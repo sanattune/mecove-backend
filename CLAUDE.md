@@ -53,23 +53,32 @@ No test framework is currently configured.
 **Message flow:**
 1. WhatsApp message arrives at `POST /webhooks/whatsapp`
 2. Server validates signature, upserts User/Identity, stores Message
-3. Messages are batched in Redis (`replyBatch/state.ts`) with debounce (5s) and max-wait (15s)
-4. When batch flushes, worker runs the reply pipeline (`llm/ackReply.ts`) — see `src/llm/CLAUDE.md` for full classification and routing details
-5. If the decision includes `shouldGenerateSummary: true`, a summary range prompt (buttons) is sent and a summary job is enqueued
+3. Any message starting with `/` is a **direct command** — bypasses batching entirely, enqueued to `replyQueue` with `mode: "command"`
+4. Interactive button replies (summary range, check-in time selection) are intercepted before the text guard via Redis pending-key gates
+5. Regular text messages are batched in Redis (`replyBatch/state.ts`) with debounce (5s) and max-wait (15s)
+6. When batch flushes, worker runs the reply pipeline (`llm/ackReply.ts`) — see `src/llm/CLAUDE.md` for full classification and routing details
+7. If the decision includes `shouldGenerateSummary: true` or `shouldSetupCheckin: true`, the respective flow is triggered
+
+**Message categories** (stored on `Message.category`):
+- `user_message` — default journal entry
+- `command_reply` — user sent a `/command`; filtered out of LLM context and chatlog
+- `test_feedback` — internal test feedback; filtered everywhere
+- `summary_request` — message that triggered a summary; excluded from report windows
 
 **Key subsystems** (see `CLAUDE.md` in each directory for details):
-- `src/llm/` — reply pipeline: classification, routing, LLM config
+- `src/llm/` — LLM pipeline: classify/, reply/ack|greeting|guide/, context/, config, client
 - `src/summary/` — multi-stage summary pipeline, PDF generation
 - `src/infra/` — shared services: encryption, Prisma, Redis, WhatsApp client, PDF, logger
-- `src/queues/` — three BullMQ queues: summaryQueue, replyQueue, replyBatchQueue
+- `src/queues/` — four BullMQ queues: summaryQueue, replyQueue, replyBatchQueue, reminderQueue
 - `src/consent/` — YAML-configured consent gating flow
 - `src/replyBatch/` — Redis-based message batching with atomic lock for flush
+- `src/engagement/` — proactive messaging: checkin/ (reminders), nudge/ (inactivity), shared scheduler.ts
 
 ## Database
 
 Prisma schema at `prisma/schema.prisma`. Config in `prisma.config.ts` (resolves DATABASE_URL or builds from DB_HOST/DB_USER/DB_PASSWORD/DB_NAME; auto-adds SSL for RDS).
 
-**Models:** User → Identity (channel binding) → Message. Summary links to User.
+**Models:** User → Identity (channel binding) → Message. Summary links to User. UserSettings (1-to-1 with User, created eagerly) holds per-user preferences: `timezone`, `lastNudgedAt`. UserReminder holds scheduled check-ins per user.
 
 ## Environment Variables
 
@@ -77,6 +86,6 @@ Required: `DATABASE_URL` (or `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`), `REDI
 
 ## Build Notes
 
-- The build step copies non-TS assets to `dist/`: `src/llm/llm.yaml` and `src/summary/template/` (HTML, CSS, images)
+- The build step copies non-TS assets to `dist/`: `src/llm/llm.yaml`, `src/summary/template/` (HTML, CSS, images), `src/engagement/checkin/checkin.yaml`, `src/engagement/nudge/nudge.yaml`
 - Prisma 7 uses `prisma.config.ts` for driver adapter configuration, not the standard `schema.prisma` generator block
 - Docker image installs system Chromium; local dev needs `npx puppeteer browsers install chrome`

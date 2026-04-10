@@ -7,8 +7,8 @@ import {
   JOB_NAME_SCAN_NUDGES,
   type ScanRemindersPayload,
 } from "../queues/reminderQueue";
-import { computeNextFireAt } from "./handler";
-import { pickCheckinMessage } from "./messages";
+import { computeNextFireAt } from "./checkin/handler";
+import { pickCheckinMessage } from "./checkin/messages";
 
 const REMINDER_SCAN_INTERVAL_MS = 60_000;
 

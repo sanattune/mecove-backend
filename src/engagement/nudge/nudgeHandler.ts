@@ -1,6 +1,6 @@
-import { prisma } from "../infra/prisma";
-import { logger } from "../infra/logger";
-import { sendWhatsAppReply } from "../infra/whatsapp";
+import { prisma } from "../../infra/prisma";
+import { logger } from "../../infra/logger";
+import { sendWhatsAppReply } from "../../infra/whatsapp";
 import { generateNudgeMessage } from "./nudgeReply";
 
 const INACTIVITY_THRESHOLD_DAYS = 3;

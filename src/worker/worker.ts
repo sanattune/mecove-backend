@@ -19,7 +19,7 @@ import {
   replyBatchQueue,
   type FlushReplyBatchPayload,
 } from "../queues/replyBatchQueue";
-import { generateAckDecision } from "../llm/ackReply";
+import { generateAckDecision } from "../llm/reply/ack/ackReply";
 import { decryptText, encryptText, getKek } from "../infra/encryption";
 import { getOrCreateUserDek } from "../infra/userDek";
 import {
@@ -41,7 +41,7 @@ import { buildWindowBundle } from "../summary/windowBuilder";
 import { buildMinimalFallbackReport } from "../summary/reportAssembler";
 import { generateSummaryPipeline } from "../summary/pipeline";
 import { clearSummaryArtifactsForUser } from "../summary/redisArtifacts";
-import { handleCheckinIntent } from "../checkin/handler";
+import { handleCheckinIntent } from "../engagement/checkin/handler";
 import {
   REMINDER_QUEUE_NAME,
   JOB_NAME_SCAN_REMINDERS,
@@ -49,8 +49,8 @@ import {
   reminderQueue,
   type ScanRemindersPayload,
 } from "../queues/reminderQueue";
-import { startReminderScheduler, startNudgeScheduler, processReminderScan } from "../checkin/scheduler";
-import { processNudgeScan } from "../nudge/nudgeHandler";
+import { startReminderScheduler, startNudgeScheduler, processReminderScan } from "../engagement/scheduler";
+import { processNudgeScan } from "../engagement/nudge/nudgeHandler";
 import {
   REPLY_BATCH_DEBOUNCE_MS,
   REPLY_BATCH_MAX_WAIT_MS,
@@ -756,6 +756,11 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
         });
         replyText = checkinBodyText;
         replySent = true;
+        // Tag all batch messages as command_reply so they're filtered from future LLM context
+        await prisma.message.updateMany({
+          where: { id: { in: claimedBatch.ids } },
+          data: { category: "command_reply" },
+        });
       } else if (shouldGenerateSummary) {
         // Label the latest message in the batch as a summary request so it is
         // excluded from future report windows.

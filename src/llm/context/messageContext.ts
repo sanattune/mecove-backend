@@ -1,6 +1,6 @@
-import { prisma } from "../infra/prisma";
-import { decryptText } from "../infra/encryption";
-import { getOrCreateUserDek } from "../infra/userDek";
+import { prisma } from "../../infra/prisma";
+import { decryptText } from "../../infra/encryption";
+import { getOrCreateUserDek } from "../../infra/userDek";
 
 export type MessageRow = {
   text: string | null;

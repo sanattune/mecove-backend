@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { logger } from "../infra/logger";
-import { LlmViaApi } from "../llm/llmViaApi";
-import { fetchFormattedMessageLines } from "../llm/messageContext";
+import { logger } from "../../infra/logger";
+import { LlmViaApi } from "../../llm/llmViaApi";
+import { fetchFormattedMessageLines } from "../../llm/context/messageContext";
 
 const llm = new LlmViaApi();
 
