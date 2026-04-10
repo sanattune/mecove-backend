@@ -1,12 +1,10 @@
-import { prisma } from "../infra/prisma";
-import { logger } from "../infra/logger";
-import { decryptText } from "../infra/encryption";
-import { getOrCreateUserDek } from "../infra/userDek";
-import { LlmViaApi } from "./llmViaApi";
-import { loadLLMConfigForTask } from "./config";
-import { classifyMessage } from "./ackClassify";
-import { generateGuideResponse } from "./guideReply";
-import { generateGreetingResponse } from "./greetingReply";
+import { logger } from "../../../infra/logger";
+import { LlmViaApi } from "../../llmViaApi";
+import { fetchFormattedMessageLines } from "../../context/messageContext";
+import { loadLLMConfigForTask } from "../../config";
+import { classifyMessage } from "../../classify/ackClassify";
+import { generateGuideResponse } from "../guide/guideReply";
+import { generateGreetingResponse } from "../greeting/greetingReply";
 
 // LLM for ack/reply and summary report generation. Uses unified YAML config (llm.yaml).
 // Provider and model are selected by complexity/reasoning requirements.
@@ -18,6 +16,7 @@ export type AckDecision = {
   replyText: string;
   shouldGenerateSummary: boolean;
   shouldGenerateReport?: boolean;
+  shouldSetupCheckin?: boolean;
 };
 
 // ── Deterministic ack phrase rotation ──────────────────────────────────────────
@@ -347,36 +346,11 @@ export async function generateAckDecision(
     };
   }
 
-  const recentMessages = await prisma.message.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: ACK_CONTEXT_FETCH_LIMIT,
-    select: { text: true, createdAt: true, replyText: true, repliedAt: true, category: true },
+  const { lines, oldestFirst } = await fetchFormattedMessageLines(userId, {
+    fetchLimit: ACK_CONTEXT_FETCH_LIMIT,
+    targetCount: ACK_CONTEXT_TARGET_COUNT,
+    botLabel: "Bot",
   });
-
-  const dek = await getOrCreateUserDek(userId);
-
-  // Last ACK_CONTEXT_TARGET_COUNT (10) user messages, then reverse so oldest-first for the prompt
-  const filteredRecent = recentMessages
-    .filter((m) => m.category !== "test_feedback")
-    .slice(0, ACK_CONTEXT_TARGET_COUNT);
-  const oldestFirst = filteredRecent.reverse();
-
-  // Decrypt text and replyText in place
-  for (const m of oldestFirst) {
-    if (m.text) m.text = decryptText(m.text, dek);
-    if (m.replyText) m.replyText = decryptText(m.replyText, dek);
-  }
-
-  // Format messages as alternating User/Bot pairs (oldest first) so the LLM sees chronology and its prior replies
-  const lines: string[] = [];
-  for (const m of oldestFirst) {
-    const userLine = `User: ${(m.text ?? "(no text)").trim()}`;
-    lines.push(userLine);
-    if (m.replyText && m.repliedAt) {
-      lines.push(`Bot: ${m.replyText.trim()}`);
-    }
-  }
 
   const messagesBlock = lines.length > 0 ? lines.join("\n") : "(no prior messages)";
   const botLineCount = oldestFirst.filter((m) => m.replyText && m.repliedAt).length;
@@ -447,6 +421,10 @@ export async function generateAckDecision(
 
   if (classifier.type === "summary_request") {
     return { replyText: ackPhrase, shouldGenerateSummary: true };
+  }
+
+  if (classifier.type === "setup_checkin") {
+    return { replyText: ackPhrase, shouldGenerateSummary: false, shouldSetupCheckin: true };
   }
 
   if (classifier.type === "guide_query") {

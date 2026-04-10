@@ -1,23 +1,25 @@
 /**
  * Seed chat data script
- * 
+ *
  * Usage:
- *   tsx seed/seedChatData.ts [file-path] [--user <userId>] [--clear]
- * 
+ *   tsx seed/seedChatData.ts [file-path] --phone <phone> [--clear]
+ *
  * Arguments:
  *   file-path    Path to JSON file (default: seed/chat-data/chat1.json)
- *   --user, -u   User ID (default: ca1a1c7f-ea3a-4681-afe1-db833f5d5d23)
+ *   --phone, -p  WhatsApp phone number used to find or create the target user
  *   --clear, -c  Clear existing messages for the user before inserting
- * 
+ *
  * Example:
- *   tsx seed/seedChatData.ts
- *   tsx seed/seedChatData.ts seed/chat-data/chat1.json --user abc123 --clear
+ *   tsx seed/seedChatData.ts --phone +919876543210
+ *   tsx seed/seedChatData.ts seed/chat-data/chat1.json --phone +919876543210 --clear
  */
 
 import "dotenv/config";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { encryptText } from "../src/infra/encryption";
 import { prisma } from "../src/infra/prisma";
+import { getOrCreateUserDek } from "../src/infra/userDek";
 
 export interface ChatMessage {
   index: number;
@@ -30,21 +32,24 @@ export interface ChatDay {
   chat?: ChatMessage[];
 }
 
-const DEFAULT_USER_ID = "ca1a1c7f-ea3a-4681-afe1-db833f5d5d23";
-const CHANNEL = "seed";
-const CHANNEL_USER_KEY = "seed-user-1";
+const CHANNEL = "whatsapp";
 
-function parseArgs(): { filePath: string; userId: string; clear: boolean } {
+function normalizeChannelUserKey(raw: string): string {
+  const normalized = raw.trim().replace(/\s+/g, "");
+  return normalized.startsWith("+") ? normalized : `+${normalized}`;
+}
+
+function parseArgs(): { filePath: string; phone: string; clear: boolean } {
   const args = process.argv.slice(2);
   let filePath = "";
-  let userId = DEFAULT_USER_ID;
+  let phone = "";
   let clear = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--clear" || args[i] === "-c") {
       clear = true;
-    } else if (args[i] === "--user" || args[i] === "-u") {
-      userId = args[++i];
+    } else if (args[i] === "--phone" || args[i] === "-p") {
+      phone = args[++i] || "";
     } else if (!filePath && !args[i].startsWith("-")) {
       filePath = args[i];
     }
@@ -55,48 +60,40 @@ function parseArgs(): { filePath: string; userId: string; clear: boolean } {
     filePath = join(process.cwd(), "seed", "chat-data", "chat1.json");
   }
 
-  return { filePath, userId, clear };
-}
-
-async function ensureUserAndIdentity(userId: string): Promise<{ userId: string; identityId: string }> {
-  // Ensure user exists
-  let user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
-
-  if (!user) {
-    user = await prisma.user.create({
-      data: { id: userId },
-    });
-    console.log(`Created user: ${userId}`);
-  } else {
-    console.log(`User exists: ${userId}`);
+  if (!phone.trim()) {
+    throw new Error("Missing required --phone <phone> argument");
   }
 
-  // Ensure identity exists
+  return { filePath, phone: normalizeChannelUserKey(phone), clear };
+}
+
+async function findOrCreateUserByPhone(phone: string): Promise<{ userId: string; identityId: string }> {
   let identity = await prisma.identity.findUnique({
     where: {
       channel_channelUserKey: {
         channel: CHANNEL,
-        channelUserKey: CHANNEL_USER_KEY,
+        channelUserKey: phone,
       },
     },
+    include: { user: true },
   });
 
   if (!identity) {
+    const user = await prisma.user.create({ data: {} });
     identity = await prisma.identity.create({
       data: {
         userId: user.id,
         channel: CHANNEL,
-        channelUserKey: CHANNEL_USER_KEY,
+        channelUserKey: phone,
       },
+      include: { user: true },
     });
-    console.log(`Created identity: ${identity.id}`);
+    console.log(`Created user ${user.id} with WhatsApp identity for ${phone}`);
   } else {
-    console.log(`Identity exists: ${identity.id}`);
+    console.log(`Found existing user ${identity.userId} for ${phone}`);
   }
 
-  return { userId: user.id, identityId: identity.id };
+  return { userId: identity.userId, identityId: identity.id };
 }
 
 async function clearExistingData(userId: string): Promise<void> {
@@ -147,6 +144,7 @@ async function insertMessages(
   userId: string,
   identityId: string
 ): Promise<void> {
+  const dek = await getOrCreateUserDek(userId);
   const today = new Date();
   const day1Date = new Date(today);
   day1Date.setDate(day1Date.getDate() - 15); // Day 1 is 15 days ago
@@ -165,7 +163,10 @@ async function insertMessages(
     for (const { message, timestamp } of distributed) {
       // Insert user message with reply info
       const userSourceId = `seed-msg-${dayData.day}-${message.index}`;
-      const replyTimestamp = message.r && message.r.trim() 
+      const replyText = message.r && message.r.trim() ? message.r.trim() : null;
+      const encryptedText = encryptText(message.u, dek);
+      const encryptedReplyText = replyText ? encryptText(replyText, dek) : null;
+      const replyTimestamp = replyText
         ? new Date(timestamp.getTime() + 60000) // Reply 1 minute after
         : null;
 
@@ -177,23 +178,23 @@ async function insertMessages(
           },
         },
         update: {
-          text: message.u,
+          text: encryptedText,
           createdAt: timestamp,
           clientTimestamp: timestamp,
           repliedAt: replyTimestamp,
-          replyText: message.r && message.r.trim() ? message.r : null,
+          replyText: encryptedReplyText,
           category: "user_message",
         },
         create: {
           userId,
           identityId,
           contentType: "text",
-          text: message.u,
+          text: encryptedText,
           sourceMessageId: userSourceId,
           createdAt: timestamp,
           clientTimestamp: timestamp,
           repliedAt: replyTimestamp,
-          replyText: message.r && message.r.trim() ? message.r : null,
+          replyText: encryptedReplyText,
           category: "user_message",
         },
       });
@@ -224,22 +225,22 @@ export async function seedFromFile(
 }
 
 async function main() {
-  const { filePath, userId, clear } = parseArgs();
+  const { filePath, phone, clear } = parseArgs();
 
   console.log(`Reading chat data from: ${filePath}`);
-  console.log(`User ID: ${userId}`);
+  console.log(`Phone: ${phone}`);
   console.log(`Clear existing data: ${clear}`);
 
   const fileContent = readFileSync(filePath, "utf-8");
   const data: ChatDay[] = JSON.parse(fileContent);
 
-  const { userId: finalUserId, identityId } = await ensureUserAndIdentity(userId);
+  const { userId, identityId } = await findOrCreateUserByPhone(phone);
 
   if (clear) {
-    await clearExistingData(finalUserId);
+    await clearExistingData(userId);
   }
 
-  await insertMessages(data, finalUserId, identityId);
+  await insertMessages(data, userId, identityId);
 
   console.log("Seed data insertion complete!");
 }

@@ -3,7 +3,8 @@
     "allow": [
       "Bash(pnpm build:*)",
       "Bash(pnpm prisma:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(ls:*)"
     ]
   }
 }

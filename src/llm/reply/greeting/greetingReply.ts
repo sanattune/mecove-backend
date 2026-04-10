@@ -1,8 +1,6 @@
-import { prisma } from "../infra/prisma";
-import { logger } from "../infra/logger";
-import { decryptText } from "../infra/encryption";
-import { getOrCreateUserDek } from "../infra/userDek";
-import { LlmViaApi } from "./llmViaApi";
+import { logger } from "../../../infra/logger";
+import { LlmViaApi } from "../../llmViaApi";
+import { fetchFormattedMessageLines } from "../../context/messageContext";
 
 const llm = new LlmViaApi();
 
@@ -57,32 +55,18 @@ export async function generateGreetingResponse(
   userId: string,
   userGreeting: string
 ): Promise<string | null> {
-  // Fetch recent messages (we need both the timestamp gap and message content)
-  const recentMessages = await prisma.message.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: CONTEXT_FETCH_LIMIT,
-    select: { text: true, createdAt: true, replyText: true, repliedAt: true, category: true },
+  const { lines, lastMessageTime } = await fetchFormattedMessageLines(userId, {
+    fetchLimit: CONTEXT_FETCH_LIMIT,
+    targetCount: CONTEXT_TARGET_COUNT,
+    skipFirst: true, // skip the current greeting message already stored
+    botLabel: "meCove",
   });
 
   // No prior messages — first-time user, use simple greeting
-  if (recentMessages.length === 0) {
+  if (!lastMessageTime) {
     return null;
   }
 
-  // The most recent message is the greeting we just received (already stored).
-  // We need the one before it to compute the gap.
-  const previousMessages = recentMessages.filter(
-    (m) => m.category !== "test_feedback"
-  );
-
-  // Skip the current greeting message (the first/most-recent one)
-  const priorMessages = previousMessages.slice(1);
-  if (priorMessages.length === 0) {
-    return null;
-  }
-
-  const lastMessageTime = priorMessages[0].createdAt;
   const gapMs = Date.now() - lastMessageTime.getTime();
 
   // Tier 1: gap < 5 hours — return null, caller uses simple classifier reply
@@ -97,19 +81,6 @@ export async function generateGreetingResponse(
   }
 
   // Tier 2: 5h – 3d — personalized greeting via LLM
-  const contextMessages = priorMessages.slice(0, CONTEXT_TARGET_COUNT);
-  const oldestFirst = [...contextMessages].reverse();
-
-  const dek = await getOrCreateUserDek(userId);
-
-  const lines: string[] = [];
-  for (const m of oldestFirst) {
-    const text = m.text ? decryptText(m.text, dek) : null;
-    const reply = m.replyText ? decryptText(m.replyText, dek) : null;
-    if (text) lines.push(`User: ${text}`);
-    if (reply) lines.push(`meCove: ${reply}`);
-  }
-
   if (lines.length === 0) {
     return null;
   }

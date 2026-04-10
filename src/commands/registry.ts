@@ -16,6 +16,7 @@ export const COMMANDS: CommandDef[] = [
   { name: "/revoke",   description: "/revoke <phone> — remove access from a user",   adminOnly: true  },
   { name: "/users",    description: "List all approved users",                       adminOnly: true  },
   { name: "/userstats", description: "Show last activity for all users",              adminOnly: true  },
+  { name: "/checkin",  description: "Set up your daily check-in reminder",            adminOnly: false },
   { name: "/privacy",  description: "View the privacy and usage notice",              adminOnly: false },
   { name: "/f",        description: "Submit test feedback",                           adminOnly: false, hidden: true },
 ];

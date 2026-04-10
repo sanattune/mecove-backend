@@ -28,6 +28,8 @@ model User {
   identities Identity[]
   messages   Message[]
   summaries  Summary[]
+  reminders  UserReminder[]
+  settings   UserSettings?
 }
 
 model Identity {
@@ -84,4 +86,33 @@ model Summary {
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId, rangeStart, rangeEnd])
+}
+
+model UserReminder {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  time          String
+  frequencyType String
+  intervalDays  Int?
+  nextFireAt    DateTime
+  label         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([nextFireAt, isActive])
+  @@index([userId])
+}
+
+model UserSettings {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @unique @db.Uuid
+  timezone     String    @default("Asia/Kolkata")
+  lastNudgedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
 }

@@ -1,0 +1,229 @@
+[
+  {
+    "day": 1,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Board exams are getting so close and I keep feeling like everyone else has a proper plan except me. I sit with my books for hours but half the time my head is full of fear instead of what I am studying.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "My parents keep asking what I want to do after school and I genuinely do not know. The more they ask, the more blank I feel.",
+        "r": "Noted."
+      },
+      {
+        "index": 3,
+        "u": "It is not even that I do not want to work hard, I just feel behind in everything at once. Studies, confidence, career clarity, everything.",
+        "r": "Acknowledged. Say more if you'd like."
+      }
+    ]
+  },
+  {
+    "day": 2,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Today my mother compared me to one of our relatives who already knows he wants engineering and has joined coaching for it. I know she thinks she is motivating me but it just makes me feel smaller.",
+        "r": "Got it. That sounds like a lot of pressure."
+      },
+      {
+        "index": 2,
+        "u": "When people say this is the age to decide your future, it sounds huge and final. I feel like I am being asked to choose a whole life when I cannot even choose what chapter to revise first.",
+        "r": "Noted."
+      },
+      {
+        "index": 3,
+        "u": "I keep imagining disappointing everyone and then I cannot focus properly. It becomes a cycle where fear eats the time I should be studying.",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 3
+  },
+  {
+    "day": 4,
+    "chat": [
+      {
+        "index": 1,
+        "u": "My elder brother called in the evening and asked how I was doing. He was calm about it and said nobody has everything figured out at 17, which helped for some time.",
+        "r": "Noted. Feel free to share more if you want."
+      },
+      {
+        "index": 2,
+        "u": "We ended up talking about random things and laughing about old school stories, and for a little while I felt normal again. Those kinds of conversations make me feel less trapped in my own head.",
+        "r": "Got it."
+      },
+      {
+        "index": 3,
+        "u": "But then after the call I started comparing myself with him too because he sounds so sorted and mature. Even my comfort somehow turns into comparison after some time.",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 5,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I tried doing a full study plan today and it looked good on paper but I could not follow it properly. Whenever I miss one target, my mind immediately says I am going to fail overall.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "I know one bad day should not mean anything big, but in my head everything becomes a sign that I am not capable enough. I wish I knew how to stop thinking in extremes.",
+        "r": "Noted."
+      },
+      {
+        "index": 3,
+        "u": "My friends talk about colleges and courses so casually. I act normal in front of them but inside I feel like I am standing outside a race that already started.",
+        "r": "Acknowledged. Say more if you'd like."
+      },
+      {
+        "index": 4,
+        "u": "There is also this constant fear that if I choose wrong now I will regret it for years. That thought freezes me more than it helps me decide.",
+        "r": "Got it."
+      }
+    ]
+  },
+  {
+    "day": 6
+  },
+  {
+    "day": 7,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Today was one of those days where everybody in the house looked busy and sure of themselves and I just felt confused. It is strange how visible your own uncertainty feels when everyone else seems stable.",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "My sister was telling me about how she used to be scared before her exams too, and that made me feel understood. But then I started thinking she still handled things better than I am handling them now.",
+        "r": "Got it."
+      },
+      {
+        "index": 3,
+        "u": "I compare my present self with their present selves, not even their 17 year old selves. I know that is unfair, but I still do it automatically.",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 8,
+    "chat": [
+      {
+        "index": 1,
+        "u": "There was a short moment in the afternoon where I understood a topic properly and actually felt capable. It reminded me that I am not completely hopeless, just very inconsistent mentally.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "I wish I could hold on to that feeling longer instead of losing it the second someone asks about marks or the future. My confidence feels very fragile right now.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 9,
+    "chat": [
+      {
+        "index": 1,
+        "u": "My father got angry today and said I am wasting time by overthinking instead of deciding something. I know he is stressed too, but hearing that from him made me feel like I am already becoming a disappointment before results even come.",
+        "r": "Got it. That's heavy."
+      },
+      {
+        "index": 2,
+        "u": "For some time tonight I honestly felt like disappearing because everything seems so difficult and I am tired of feeling scared all the time. I am not saying this to create drama, it is just how dark my head felt for a while.",
+        "r": "That sounds scary. What's going on right now?"
+      },
+      {
+        "index": 3,
+        "u": "I am in my room now and I am calmer than before, but the thought itself scared me after it came. I hate that my mind can go to that place just from pressure and comparison.",
+        "r": "Noted. Please stay with someone you trust if you can."
+      }
+    ]
+  },
+  {
+    "day": 10
+  },
+  {
+    "day": 11,
+    "chat": [
+      {
+        "index": 1,
+        "u": "My brother checked in again today and spoke normally instead of making a big deal out of everything, and that helped. He told me to break the next few days into smaller targets and not keep treating my whole future like one exam timetable.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "I am still confused, but I felt a little more steady after that conversation. Sometimes I just need someone to talk to me without sounding disappointed or urgent.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 3,
+        "u": "We also talked about how he used to pretend he had everything figured out when he actually did not. That was weirdly comforting because I always imagine my siblings were clear from the beginning.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 12,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I studied better today because I stopped trying to complete everything and just picked two subjects. It is not a huge achievement, but at least I did not spend the whole day spiraling.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "Career thoughts are still there in the background, but they were not crushing me every minute today. That itself felt different.",
+        "r": "Got it."
+      },
+      {
+        "index": 3,
+        "u": "I am still comparing myself a lot, just maybe with a little less panic. It feels more like a habit I notice now instead of a wave I completely drown in.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 13
+  },
+  {
+    "day": 14,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I had tea with my sister in the evening and we talked about life in a more relaxed way, not like some formal future-planning session. I miss that version of conversations where nobody is measuring me.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "She said clarity comes slowly and sometimes only after trying things, not before. I do not fully believe it yet, but I want to.",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 15,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I am still scared of failing and I still do not know exactly what I want after school, so none of that is magically solved. But the fear feels slightly less absolute than it did a few days ago.",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "Maybe the real problem is that I keep expecting one final answer about who I should become, and then I panic because I do not have it. For now I am trying to focus on what I can finish this week instead.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 3,
+        "u": "I still compare myself with my siblings and with friends, but I am at least starting to notice that comparison is making everything heavier. That feels like a small bit of clarity even if the bigger clarity is still missing.",
+        "r": "Got it."
+      }
+    ]
+  }
+]

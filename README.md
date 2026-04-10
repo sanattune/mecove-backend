@@ -168,7 +168,7 @@ pnpm prisma migrate dev
 | `pnpm prisma generate` | Generate Prisma Client |
 | `pnpm prisma studio` | Open Prisma Studio (DB GUI) |
 | `pnpm db:wipe` | Wipe all data (requires `ALLOW_DB_WIPE=true` + `--confirm <DB_NAME>`) |
-| `pnpm seed:chat [file]` | Seed DB with chat data from a JSON file |
+| `pnpm seed:chat [file] --phone <phone>` | Seed DB with chat data from a JSON file for a WhatsApp phone number |
 | `pnpm seed:generate [yaml]` | LLM-generate chat data from a YAML config and optionally seed DB |
 
 ## 🗄️ Database

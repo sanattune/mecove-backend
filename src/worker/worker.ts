@@ -19,7 +19,7 @@ import {
   replyBatchQueue,
   type FlushReplyBatchPayload,
 } from "../queues/replyBatchQueue";
-import { generateAckDecision } from "../llm/ackReply";
+import { generateAckDecision } from "../llm/reply/ack/ackReply";
 import { decryptText, encryptText, getKek } from "../infra/encryption";
 import { getOrCreateUserDek } from "../infra/userDek";
 import {
@@ -41,6 +41,16 @@ import { buildWindowBundle } from "../summary/windowBuilder";
 import { buildMinimalFallbackReport } from "../summary/reportAssembler";
 import { generateSummaryPipeline } from "../summary/pipeline";
 import { clearSummaryArtifactsForUser } from "../summary/redisArtifacts";
+import { handleCheckinIntent } from "../engagement/checkin/handler";
+import {
+  REMINDER_QUEUE_NAME,
+  JOB_NAME_SCAN_REMINDERS,
+  JOB_NAME_SCAN_NUDGES,
+  reminderQueue,
+  type ScanRemindersPayload,
+} from "../queues/reminderQueue";
+import { startReminderScheduler, startNudgeScheduler, processReminderScan } from "../engagement/scheduler";
+import { processNudgeScan } from "../engagement/nudge/nudgeHandler";
 import {
   REPLY_BATCH_DEBOUNCE_MS,
   REPLY_BATCH_MAX_WAIT_MS,
@@ -118,7 +128,7 @@ async function buildAllTimeChatlogMarkdown(userId: string): Promise<string> {
   const messages = await prisma.message.findMany({
     where: { userId },
     orderBy: { createdAt: "asc" },
-    select: { createdAt: true, text: true, replyText: true, repliedAt: true },
+    select: { createdAt: true, text: true, replyText: true, repliedAt: true, category: true },
   });
 
   const dek = await getOrCreateUserDek(userId);
@@ -145,9 +155,9 @@ async function buildAllTimeChatlogMarkdown(userId: string): Promise<string> {
   let hasAnyMessage = false;
 
   for (const m of messages) {
+    if (m.category === "test_feedback" || m.category === "command_reply") continue;
     const userText = (m.text ?? "").trim();
     if (!userText) continue;
-    if (userText.startsWith("/")) continue;
 
     hasAnyMessage = true;
     const dateHeader = m.createdAt.toISOString().slice(0, 10);
@@ -598,6 +608,17 @@ const replyWorker = new Worker<GenerateReplyPayload>(
         });
         replyText = `User stats (${lines.length}):\n${lines.join("\n")}`;
       }
+    } else if (command === "/checkin") {
+      const checkinBodyText = await handleCheckinIntent({ userId, channelUserKey });
+      const checkinDek = await getOrCreateUserDek(userId);
+      await prisma.message.update({
+        where: { id: messageId },
+        data: {
+          repliedAt: new Date(),
+          replyText: encryptText(checkinBodyText, checkinDek),
+        },
+      });
+      return;
     } else {
       replyText = UNKNOWN_COMMAND_TEXT;
     }
@@ -710,22 +731,37 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
 
       let replyText = "Got it.";
       let shouldGenerateSummary = false;
+      let shouldSetupCheckin = false;
       try {
         const decision = await generateAckDecision(userId, combinedText, "saved", { isAdmin: isAdminBatchUser });
         if (decision.replyText.trim().length > 0) {
           replyText = decision.replyText.trim();
         }
         shouldGenerateSummary = decision.shouldGenerateSummary;
+        shouldSetupCheckin = decision.shouldSetupCheckin ?? false;
         logger.info("ack decision summary flag", {
           userId,
           shouldGenerateSummary,
+          shouldSetupCheckin,
           batchMessageCount: combinedText ? combinedText.split(/\n/).length : 0,
         });
       } catch (err) {
         logger.warn("LLM batch reply generation failed, using fallback", err);
       }
 
-      if (shouldGenerateSummary) {
+      if (shouldSetupCheckin) {
+        const checkinBodyText = await handleCheckinIntent({
+          userId,
+          channelUserKey: claimedBatch.meta.channelUserKey,
+        });
+        replyText = checkinBodyText;
+        replySent = true;
+        // Tag all batch messages as command_reply so they're filtered from future LLM context
+        await prisma.message.updateMany({
+          where: { id: { in: claimedBatch.ids } },
+          data: { category: "command_reply" },
+        });
+      } else if (shouldGenerateSummary) {
         // Label the latest message in the batch as a summary request so it is
         // excluded from future report windows.
         const latestBatchMsgId = messages[messages.length - 1]?.id;
@@ -803,6 +839,29 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
   }
 );
 
+// Reminder + nudge scan worker
+const reminderWorker = new Worker<ScanRemindersPayload>(
+  REMINDER_QUEUE_NAME,
+  async (job) => {
+    if (job.name === JOB_NAME_SCAN_REMINDERS) {
+      await processReminderScan();
+    } else if (job.name === JOB_NAME_SCAN_NUDGES) {
+      await processNudgeScan();
+    }
+  },
+  {
+    connection: getRedis(),
+    concurrency: 1,
+  }
+);
+
+reminderWorker.on("failed", (job, err) => {
+  logger.error("reminder job failed", {
+    jobId: job?.id,
+    error: err.message,
+  });
+});
+
 replyWorker.on("failed", (job, err) => {
   logger.error("reply job failed", {
     jobId: job?.id,
@@ -839,7 +898,12 @@ summaryWorker.on("failed", (job, err) => {
 });
 
 async function shutdown() {
-  await Promise.all([summaryWorker.close(), replyWorker.close(), replyBatchWorker.close()]);
+  await Promise.all([
+    summaryWorker.close(),
+    replyWorker.close(),
+    replyBatchWorker.close(),
+    reminderWorker.close(),
+  ]);
   await prisma.$disconnect();
   process.exit(0);
 }
@@ -847,4 +911,7 @@ async function shutdown() {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-logger.info("worker started (summary + reply + reply_batch queues)");
+void startReminderScheduler(reminderQueue);
+void startNudgeScheduler(reminderQueue);
+
+logger.info("worker started (summary + reply + reply_batch + reminder queues)");

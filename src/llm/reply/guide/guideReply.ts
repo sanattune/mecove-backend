@@ -1,5 +1,5 @@
-import { LlmViaApi } from "./llmViaApi";
-import { getFullGuide } from "../guides/content";
+import { LlmViaApi } from "../../llmViaApi";
+import { getFullGuide } from "../../../guides/content";
 
 const llm = new LlmViaApi();
 
