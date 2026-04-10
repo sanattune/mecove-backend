@@ -17,6 +17,7 @@ export type AckDecision = {
   shouldGenerateSummary: boolean;
   shouldGenerateReport?: boolean;
   shouldSetupCheckin?: boolean;
+  classifierType?: string;
 };
 
 // ── Deterministic ack phrase rotation ──────────────────────────────────────────
@@ -248,7 +249,7 @@ const FALLBACK_REPLY = "Got it.";
 const ACK_CONTEXT_TARGET_COUNT = 10;
 const ACK_CONTEXT_FETCH_LIMIT = 30;
 
-function parseAckDecision(raw: string): { replyText: string; shouldGenerateSummary: boolean } {
+function parseAckDecision(raw: string): AckDecision {
   const trimmed = raw.trim();
   let candidate = trimmed;
 
@@ -395,42 +396,43 @@ export async function generateAckDecision(
 
   // Route based on classifier result
   if (classifier.type === "closing") {
-    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateSummary: false };
+    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateSummary: false, classifierType: "closing" };
   }
 
   if (classifier.type === "greeting") {
     try {
       const greetingReply = await generateGreetingResponse(userId, freshMessageText);
       if (greetingReply) {
-        return { replyText: greetingReply, shouldGenerateSummary: false };
+        return { replyText: greetingReply, shouldGenerateSummary: false, classifierType: "greeting" };
       }
     } catch (err) {
       logger.warn("greeting reply generation failed, using classifier reply", {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateSummary: false };
+    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateSummary: false, classifierType: "greeting" };
   }
 
   if (classifier.type === "trivial") {
     return {
       replyText: swapAckPhrase(classifier.replyText || ackPhrase, ackPhrase),
       shouldGenerateSummary: false,
+      classifierType: "trivial",
     };
   }
 
   if (classifier.type === "summary_request") {
-    return { replyText: ackPhrase, shouldGenerateSummary: true };
+    return { replyText: ackPhrase, shouldGenerateSummary: true, classifierType: "summary_request" };
   }
 
   if (classifier.type === "setup_checkin") {
-    return { replyText: ackPhrase, shouldGenerateSummary: false, shouldSetupCheckin: true };
+    return { replyText: ackPhrase, shouldGenerateSummary: false, shouldSetupCheckin: true, classifierType: "setup_checkin" };
   }
 
   if (classifier.type === "guide_query") {
     try {
       const guideReply = await generateGuideResponse(freshMessageText, options?.isAdmin ?? false);
-      return { replyText: guideReply, shouldGenerateSummary: false };
+      return { replyText: guideReply, shouldGenerateSummary: false, classifierType: "guide_query" };
     } catch (err) {
       logger.warn("guide reply generation failed, falling through to ACK_PROMPT", {
         error: err instanceof Error ? err.message : String(err),
@@ -439,7 +441,7 @@ export async function generateAckDecision(
     }
   }
 
-  // Stage 2: "other" — full ACK_PROMPT for complex/emotional/ambiguous messages
+  // Stage 2: "journal_entry" — full ACK_PROMPT for complex/emotional/ambiguous messages
   const prompt = renderAckPrompt({
     saveStatus,
     messagesBlock,
@@ -461,6 +463,7 @@ export async function generateAckDecision(
   // Deterministic ack rotation: swap whatever ack the LLM used with our rotated phrase.
   // If the reply doesn't start with a known ack (safety, closing), leave it as-is.
   decision.replyText = swapAckPhrase(decision.replyText, ackPhrase);
+  decision.classifierType = "journal_entry";
 
   return decision;
 }

@@ -57,6 +57,7 @@ model Message {
   rawPayload      String?   @db.Text
   sourceMessageId String
   category        String?
+  classifierType  String?
   repliedAt       DateTime?
   replyText       String?   @db.Text
 
