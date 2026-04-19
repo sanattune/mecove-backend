@@ -85,9 +85,9 @@ const BUSY_NOTICE_TEXT =
 
 const SUMMARY_PROMPT_TTL_SECONDS = 10 * 60;
 const SUMMARY_TYPE_PROMPT_TEXT =
-  "Looks like you'd like a report. Pick the kind. \"Activity report\" is a neutral summary of what you logged. \"Myself, lately\" is your own words mirrored back, grouped by theme. If you didn't mean to ask, just keep chatting \u2014 no report will be generated unless you press a button.";
+  "Looks like you'd like a report. Pick the kind. \"SessionBridge\" is a neutral brief of what you logged \u2014 good to share with a therapist or coach. \"Myself, lately\" is your own words mirrored back, grouped by theme. If you didn't mean to ask, just keep chatting \u2014 no report will be generated unless you press a button.";
 const SUMMARY_TYPE_BUTTONS: Array<{ id: string; title: string }> = [
-  { id: "summary_type_sessionbridge", title: "Activity report" },
+  { id: "summary_type_sessionbridge", title: "SessionBridge" },
   { id: "summary_type_myself_lately", title: "Myself, lately" },
 ];
 

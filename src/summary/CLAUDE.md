@@ -63,7 +63,7 @@ All dates in both reports render as `Month D` (e.g. `April 5`, `March 12`). Mont
 
 Summary intent triggers a two-step button gate before enqueuing:
 
-1. `handleSummaryIntent` (worker) sets `summaryTypePromptKey` and sends type buttons: "Activity report" / "Myself, lately".
+1. `handleSummaryIntent` (worker) sets `summaryTypePromptKey` and sends type buttons: "SessionBridge" / "Myself, lately".
 2. User press → server stores choice in `summaryChosenTypeKey`, sets `summaryRangePromptKey`, sends range buttons (7/15/30 days).
 3. User press → server reads `summaryChosenTypeKey`, enqueues `GenerateSummaryPayload { range, reportType }`.
 

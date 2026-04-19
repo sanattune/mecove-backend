@@ -54,7 +54,7 @@ No test framework is currently configured.
 1. WhatsApp message arrives at `POST /webhooks/whatsapp`
 2. Server validates signature, upserts User/Identity, stores Message
 3. Any message starting with `/` is a **direct command** — bypasses batching entirely, enqueued to `replyQueue` with `mode: "command"`; see `src/commands/CLAUDE.md` for command routing details
-4. Interactive button replies (summary range, check-in time selection) are intercepted before the text guard via Redis pending-key gates
+4. Interactive button replies (summary type, summary range, check-in time selection) are intercepted before the text guard via Redis pending-key gates. Summary intents pass through a two-step gate: type (SessionBridge / Myself, lately) → range (7/15/30 days).
 5. Regular text messages are batched in Redis (`replyBatch/state.ts`) with debounce (5s) and max-wait (15s)
 6. When batch flushes, worker runs the reply pipeline (`llm/ackReply.ts`) — see `src/llm/CLAUDE.md` for full classification and routing details
 7. If the decision includes `shouldGenerateSummary: true` or `shouldSetupCheckin: true`, the respective flow is triggered
@@ -68,7 +68,7 @@ No test framework is currently configured.
 **Key subsystems** (see `CLAUDE.md` in each directory for details):
 - `src/commands/` — slash command handling: registry, router, one file per command under user/ and admin/
 - `src/llm/` — LLM pipeline: classify/, reply/ack|greeting|guide/, context/, config, client
-- `src/summary/` — multi-stage summary pipeline, PDF generation; `keys.ts` holds shared Redis key helpers
+- `src/summary/` — multi-stage report pipeline with two report types: `sessionbridge/` (therapist brief) and `myself-lately/` (self-reflection mirror). Shared infra at top, per-report code in subfolders. PDF generation + Redis key helpers.
 - `src/infra/` — shared services: encryption, Prisma, Redis, WhatsApp client, PDF, logger
 - `src/queues/` — four BullMQ queues: summaryQueue, replyQueue, replyBatchQueue, reminderQueue
 - `src/consent/` — YAML-configured consent gating flow
@@ -91,6 +91,6 @@ Required: `DATABASE_URL` (or `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`), `REDI
 
 ## Build Notes
 
-- The build step copies non-TS assets to `dist/`: `src/llm/llm.yaml`, `src/summary/template/` (HTML, CSS, images), `src/engagement/checkin/checkin.yaml`, `src/engagement/nudge/nudge.yaml`
+- The build step copies non-TS assets to `dist/`: `src/llm/llm.yaml`, `src/summary/template/` (HTML, CSS, images), `src/summary/prompts/` (recursively, all `.md` prompt templates), `src/engagement/checkin/checkin.yaml`, `src/engagement/nudge/nudge.yaml`
 - Prisma 7 uses `prisma.config.ts` for driver adapter configuration, not the standard `schema.prisma` generator block
 - Docker image installs system Chromium; local dev needs `npx puppeteer browsers install chrome`
