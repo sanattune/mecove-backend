@@ -4,7 +4,21 @@
       "Bash(pnpm build:*)",
       "Bash(pnpm prisma:*)",
       "Bash(npx tsc:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git checkout *)",
+      "Bash(pnpm exec *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(pnpm report:fixture test-data/generated/mid-level-female-manager-32 --days 15 --end-date 2026-04-19 --report-type myself_lately)",
+      "Bash(pnpm report:fixture test-data/generated/empty-nester-male-65 --days 15 --end-date 2026-04-19 --report-type myself_lately)",
+      "Bash(pnpm report:fixture test-data/generated/mid-level-female-manager-32 --days 15 --end-date 2026-04-19)",
+      "Bash(pnpm report:fixture test-data/generated/new-mother-30 --days 15 --end-date 2026-04-19 --report-type myself_lately)",
+      "Bash(pnpm report:fixture:clean new-mother-30)",
+      "Bash(pnpm report:fixture test-data/generated/new-mother-30 --days 15 --end-date 2026-04-19)",
+      "Bash(pnpm report:fixture:clean mid-level-female-manager-32)",
+      "Bash(pnpm report:fixture test-data/generated/mid-level-female-manager-32 --days 15 --end-date 2026-04-19 --report-type sessionbridge)",
+      "Bash(pnpm report:fixture:clean career-transition-male-38)",
+      "Bash(pnpm report:fixture test-data/generated/career-transition-male-38 --days 15 --end-date 2026-04-19 --report-type sessionbridge)",
+      "Bash(gh pr create --base main --head myself-lately-report --title 'Add Myself-Lately mirror report, redesign SessionBridge as therapist brief' --body ' *)"
     ]
   }
 }
