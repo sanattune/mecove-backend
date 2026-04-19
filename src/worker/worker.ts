@@ -30,7 +30,7 @@ import {
   sendWhatsAppTypingIndicator,
 } from "../infra/whatsapp";
 import { buildWindowBundle } from "../summary/windowBuilder";
-import { buildMinimalFallbackReport } from "../summary/reportAssembler";
+import { buildMinimalFallbackReport } from "../summary/sessionbridge/assembler";
 import { generateSummaryPipeline } from "../summary/pipeline";
 import { summaryLockKey, summaryTypePromptKey } from "../summary/keys";
 import {

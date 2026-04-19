@@ -4,15 +4,16 @@ import path from "node:path";
 const PROMPTS_DIR = path.join(__dirname, "prompts");
 
 /**
- * Names correspond to files in `src/summary/prompts/<name>.md`.
- * Kept narrow so a typo doesn't silently miss a file.
+ * Names map 1:1 to relative paths under `src/summary/prompts/`. A name
+ * containing a slash resolves to a subdirectory. Kept as a union so a typo
+ * fails at compile time, not at runtime.
  */
 export type PromptName =
   | "canonicalizer"
-  | "sessionbridge-brief"
-  | "sessionbridge-guardfix"
-  | "mirror-recap"
-  | "mirror-guardfix";
+  | "sessionbridge/brief"
+  | "sessionbridge/guardfix"
+  | "myself-lately/recap"
+  | "myself-lately/guardfix";
 
 const promptCache = new Map<PromptName, string>();
 

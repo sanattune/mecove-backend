@@ -1,29 +1,34 @@
 import { logger } from "../infra/logger";
 import { loadLLMConfig } from "../llm/config";
+import { buildCanonicalizerPrompt, PROMPT_VERSIONS } from "./prompts";
+import { writeSummaryArtifact, writeSummaryErrorArtifact } from "./redisArtifacts";
+import { runJsonStage, SummaryStageError } from "./stageRunner";
+import { isCanonicalDoc } from "./validation";
+import type { ReportType, SummaryPipelineResult, WindowBundle } from "./types";
+
 import {
-  buildCanonicalizerPrompt,
-  buildMirrorGuardfixPrompt,
-  buildMirrorRecapPrompt,
   buildSessionBridgeBriefPrompt,
   buildSessionBridgeGuardfixPrompt,
-  PROMPT_VERSIONS,
-} from "./prompts";
-import { writeSummaryArtifact, writeSummaryErrorArtifact } from "./redisArtifacts";
+} from "./sessionbridge/prompts";
 import {
-  assembleFinalMirrorReport,
-  assembleFinalReport,
-  renderMirrorReportPdf,
-  renderReportPdf,
-} from "./reportAssembler";
-import { runJsonStage, SummaryStageError } from "./stageRunner";
-import {
-  isCanonicalDoc,
   isDraftSessionBridge,
-  isFinalMirror,
   isFinalSessionBridge,
-  isMirrorDraft,
-} from "./validation";
-import type { FinalMirror, MirrorEntry, ReportType, SummaryPipelineResult, WindowBundle } from "./types";
+} from "./sessionbridge/validation";
+import {
+  assembleSessionBridgeReport,
+  renderSessionBridgePdf,
+} from "./sessionbridge/assembler";
+
+import {
+  buildMirrorGuardfixPrompt,
+  buildMirrorRecapPrompt,
+} from "./myself-lately/prompts";
+import { isFinalMirror, isMirrorDraft } from "./myself-lately/validation";
+import {
+  assembleMirrorReport,
+  normalizeFinalMirror,
+  renderMirrorPdf,
+} from "./myself-lately/assembler";
 
 export type SummaryArtifactWriter = {
   writeArtifact: (
@@ -45,31 +50,6 @@ const redisArtifactWriter: SummaryArtifactWriter = {
   writeArtifact: writeSummaryArtifact,
   writeErrorArtifact: writeSummaryErrorArtifact,
 };
-
-/**
- * Deterministic caps on the mirror recap. The LLM guardfix is asked to trim
- * but sometimes overshoots or skips execution, so we enforce list and entry
- * size ceilings in code before the report is rendered.
- */
-function normalizeFinalMirror(finalMirror: FinalMirror): FinalMirror {
-  const MAX_PATTERNS = 5;
-  const MAX_MOMENTS = 4;
-  const MAX_FLAGS = 4;
-  const trimEntry = (entry: MirrorEntry): MirrorEntry => ({
-    anchor: entry.anchor.trim(),
-    body: entry.body.trim().replace(/\s+/g, " "),
-  });
-  const sparse = (finalMirror.patterns.length + finalMirror.moments.length + finalMirror.flags.length) === 0;
-  return {
-    ...finalMirror,
-    openerSentence: finalMirror.openerSentence.trim().replace(/\s+/g, " "),
-    patterns: finalMirror.patterns.slice(0, MAX_PATTERNS).map(trimEntry),
-    moments: finalMirror.moments.slice(0, MAX_MOMENTS).map(trimEntry),
-    flags: finalMirror.flags.slice(0, MAX_FLAGS).map(trimEntry),
-    // If the LLM emitted all-empty lists (sparse data path), leave as-is.
-    ...(sparse ? {} : {}),
-  };
-}
 
 function stageFailureTag(stage: string): string {
   if (stage.startsWith("L1_")) return "L1_FAIL";
@@ -150,8 +130,8 @@ export async function generateSummaryPipeline(
       await artifactWriter.writeArtifact(input.userId, input.summaryId, "final_mirror", finalMirror);
 
       const normalized = normalizeFinalMirror(finalMirror);
-      const finalReportText = assembleFinalMirrorReport(windowBundle, normalized);
-      const pdfBytes = await renderMirrorReportPdf(windowBundle, normalized);
+      const finalReportText = assembleMirrorReport(windowBundle, normalized);
+      const pdfBytes = await renderMirrorPdf(windowBundle, normalized);
       const promptVersionString = [
         `canon:${PROMPT_VERSIONS.canonicalizer}`,
         `mr:${PROMPT_VERSIONS.mirrorRecap}`,
@@ -203,8 +183,8 @@ export async function generateSummaryPipeline(
     });
     await artifactWriter.writeArtifact(input.userId, input.summaryId, "sessionbridge_final", finalSessionBridge);
 
-    const finalReportText = assembleFinalReport(windowBundle, finalSessionBridge);
-    const pdfBytes = await renderReportPdf(windowBundle, finalSessionBridge);
+    const finalReportText = assembleSessionBridgeReport(windowBundle, finalSessionBridge);
+    const pdfBytes = await renderSessionBridgePdf(windowBundle, finalSessionBridge);
     const promptVersionString = [
       `canon:${PROMPT_VERSIONS.canonicalizer}`,
       `sb:${PROMPT_VERSIONS.sessionbridgeBrief}`,

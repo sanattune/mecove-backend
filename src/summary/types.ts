@@ -1,3 +1,6 @@
+import type { DraftSessionBridge, FinalSessionBridge } from "./sessionbridge/types";
+import type { MirrorDraft, FinalMirror } from "./myself-lately/types";
+
 export type SignalBucket = "LOW" | "MEDIUM" | "HIGH";
 export type DataDensity = "sparse" | "moderate" | "dense";
 
@@ -69,72 +72,6 @@ export type CanonicalDoc = {
   };
 };
 
-/**
- * Vocabulary entry for the SessionBridge brief: a single emotion/state word
- * the person used, with a count of occurrences and short context anchors
- * pulled verbatim from canonical (what the word was attached to + date).
- */
-export type VocabularyEntry = {
-  word: string;
-  count: number;
-  contexts: string[]; // e.g. "end of day after team conflicts (Apr 5)"
-};
-
-/**
- * An ongoing theme across the window: short label + number of days it
- * appeared. Sorted highest-to-lowest day count by the brief stage.
- */
-export type OngoingTheme = {
-  label: string;   // e.g. "career change / leaving stable job"
-  dayCount: number;
-};
-
-/**
- * A question the person asked themselves in their entries. Verbatim quote
- * where possible, with the date it was logged.
- */
-export type OpenQuestion = {
-  question: string;  // verbatim-ish, ends with "?"
-  date: string;      // "April 7"
-};
-
-/**
- * A decision or option the person named — e.g. a choice they made, a plan
- * they drafted, an action they stated they would take. Verbatim-ish.
- */
-export type DecisionItem = {
-  text: string;    // quoted fragment of the decision/option
-  date: string;    // "April 19"
-};
-
-/**
- * One block of the SessionBridge daily log: date header + short factual
- * bullet fragments (quote-first, minimal narrator voice). Rendered as a
- * small-font appendix in the PDF.
- */
-export type DailyLogBlock = {
-  dateLabel: string;  // "April 5" (numeric day, month-word)
-  bullets: string[];
-};
-
-export type DraftSessionBridge = {
-  vocabulary: VocabularyEntry[];
-  ongoingThemes: OngoingTheme[];
-  openQuestions: OpenQuestion[];
-  decisions: DecisionItem[];
-  dailyLog: DailyLogBlock[];
-};
-
-export type FinalSessionBridge = {
-  status: "PASS" | "FIXED";
-  changes: string[];
-  vocabulary: VocabularyEntry[];
-  ongoingThemes: OngoingTheme[];
-  openQuestions: OpenQuestion[];
-  decisions: DecisionItem[];
-  dailyLog: DailyLogBlock[];
-};
-
 export type PromptVersions = {
   canonicalizer: string;
   sessionbridgeBrief: string;
@@ -144,37 +81,6 @@ export type PromptVersions = {
 };
 
 export type ReportType = "sessionbridge" | "myself_lately";
-
-/**
- * A single entry in one of the "Myself, Lately" lists. `anchor` is the short
- * bold label (a date, a tag, or a quoted word) that prefixes the entry;
- * `body` is the factual description after it, made up of the user's own
- * words and dates drawn from canonical. No interpretation.
- */
-export type MirrorEntry = {
-  anchor: string;
-  body: string;
-};
-
-/**
- * "Myself, Lately" recap: one factual opener sentence naming the surface
- * shape of the window, followed by three optional lists.
- */
-export type MirrorDraft = {
-  openerSentence: string;
-  patterns: MirrorEntry[];       // "Patterns you kept recording"
-  moments: MirrorEntry[];        // "Moments worth noticing"
-  flags: MirrorEntry[];          // "Worth flagging"
-};
-
-export type FinalMirror = {
-  status: "PASS" | "FIXED";
-  changes: string[];
-  openerSentence: string;
-  patterns: MirrorEntry[];
-  moments: MirrorEntry[];
-  flags: MirrorEntry[];
-};
 
 type SummaryPipelineCommon = {
   windowBundle: WindowBundle;
@@ -196,4 +102,3 @@ export type SummaryPipelineResult =
       mirrorDraft: MirrorDraft;
       finalMirror: FinalMirror;
     });
-
