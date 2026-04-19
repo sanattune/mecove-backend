@@ -85,7 +85,7 @@ WHATSAPP_TYPING_INDICATOR_ENABLED=false
 
 # Optional: ngrok for webhook tunneling
 NGROK_AUTHTOKEN=your_ngrok_token
-NGROK_TARGET=host.docker.internal:3000
+NGROK_TARGET=api:3000
 NGROK_ADMIN_URL=http://localhost:4040
 ```
 
@@ -94,6 +94,8 @@ NGROK_ADMIN_URL=http://localhost:4040
 ```bash
 docker compose up -d
 ```
+
+For a full Docker run, set `NGROK_TARGET=api:3000` so ngrok forwards to the API container. Use `NGROK_TARGET=host.docker.internal:3000` only when the API is running on the host with `pnpm dev:api`.
 
 This starts:
 - PostgreSQL on port `5432`
@@ -170,6 +172,8 @@ pnpm prisma migrate dev
 | `pnpm db:wipe` | Wipe all data (requires `ALLOW_DB_WIPE=true` + `--confirm <DB_NAME>`) |
 | `pnpm seed:chat [file] --phone <phone>` | Seed DB with chat data from a JSON file for a WhatsApp phone number |
 | `pnpm seed:generate [yaml]` | LLM-generate chat data from a YAML config and optionally seed DB |
+
+See [`docs/seed-generation.md`](docs/seed-generation.md) for the full seed data workflow and JSON format.
 
 ## 🗄️ Database
 

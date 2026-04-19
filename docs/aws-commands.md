@@ -126,6 +126,8 @@ sudo -u mecove bash -lc 'cd /home/mecove/app && pnpm db:smoke'
 
 ### Seed chat data
 
+Full workflow and JSON format: `docs/seed-generation.md`.
+
 Seed from a hand-written JSON file:
 
 ```bash

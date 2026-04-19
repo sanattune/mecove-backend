@@ -33,6 +33,7 @@ import {
   summaryQueue,
   type GenerateSummaryPayload,
 } from "../queues/summaryQueue";
+import type { ReportType } from "../summary/types";
 import { REPLY_BATCH_DEBOUNCE_MS } from "../replyBatch/config";
 import { appendMessageToBatch, hasPendingBatch } from "../replyBatch/state";
 
@@ -137,6 +138,8 @@ function parseCommand(messageText: string): string | null {
 const CONSENT_INTRO_KEY_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 const SUMMARY_RANGE_PROMPT_KEY_VERSION = "v1";
+const SUMMARY_TYPE_PROMPT_KEY_VERSION = "v1";
+const SUMMARY_CHOSEN_TYPE_KEY_VERSION = "v1";
 const SUMMARY_RANGE_PROMPT_TTL_SECONDS = 10 * 60;
 const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
 const SUMMARY_ALREADY_RUNNING_TEXT =
@@ -147,21 +150,37 @@ const SUMMARY_RANGE_ACTION_IDS: Record<string, GenerateSummaryPayload["range"]> 
   summary_range_15: "last_15_days",
   summary_range_30: "last_30_days",
 };
+const SUMMARY_TYPE_ACTION_IDS: Record<string, ReportType> = {
+  summary_type_sessionbridge: "sessionbridge",
+  summary_type_myself_lately: "myself_lately",
+};
 
-async function sendSummaryRangePrompts(toDigits: string): Promise<void> {
-  await sendWhatsAppButtons(
-    toDigits,
-    "It seems like you'd like a SessionBridge report summary. If so, select the period below. If not, just keep chatting \u2014 no report will be generated unless you press a button.",
-    [
-      { id: "summary_range_7", title: "Last 7 days" },
-      { id: "summary_range_15", title: "Last 15 days" },
-      { id: "summary_range_30", title: "Last 30 days" },
-    ]
-  );
+async function sendSummaryRangePrompts(toDigits: string, reportType: ReportType): Promise<void> {
+  const body =
+    reportType === "myself_lately"
+      ? "How far back should the mirror go? Pick a window."
+      : "Pick a window for your activity report.";
+  await sendWhatsAppButtons(toDigits, body, [
+    { id: "summary_range_7", title: "Last 7 days" },
+    { id: "summary_range_15", title: "Last 15 days" },
+    { id: "summary_range_30", title: "Last 30 days" },
+  ]);
 }
 
 function summaryRangePromptKey(userId: string): string {
   return `summary:range_prompt:${SUMMARY_RANGE_PROMPT_KEY_VERSION}:${userId}`;
+}
+
+function summaryTypePromptKey(userId: string): string {
+  return `summary:type_prompt:${SUMMARY_TYPE_PROMPT_KEY_VERSION}:${userId}`;
+}
+
+function summaryChosenTypeKey(userId: string): string {
+  return `summary:chosen_type:${SUMMARY_CHOSEN_TYPE_KEY_VERSION}:${userId}`;
+}
+
+function isReportType(value: string | null | undefined): value is ReportType {
+  return value === "sessionbridge" || value === "myself_lately";
 }
 
 function summaryLockKey(userId: string): string {
@@ -389,6 +408,40 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      // Summary type selection gate (runs before range gate).
+      // If the user just asked for a summary, we first ask which kind of report
+      // (sessionbridge activity report vs "Myself, lately" mirror).
+      {
+        const redis = getRedis();
+        const typePromptKey = summaryTypePromptKey(user.id);
+        const hasTypePrompt = (await redis.exists(typePromptKey)) > 0;
+        if (hasTypePrompt) {
+          const actionId = extractInboundActionId(inbound);
+          const selectedType = actionId ? SUMMARY_TYPE_ACTION_IDS[actionId] : undefined;
+          if (selectedType) {
+            await redis.del(typePromptKey);
+            await redis.set(
+              summaryChosenTypeKey(user.id),
+              selectedType,
+              "EX",
+              SUMMARY_RANGE_PROMPT_TTL_SECONDS
+            );
+            await redis.set(
+              summaryRangePromptKey(user.id),
+              "0",
+              "EX",
+              SUMMARY_RANGE_PROMPT_TTL_SECONDS
+            );
+            await sendSummaryRangePrompts(toDigits, selectedType);
+            sendJSON(res, 200, { ok: true });
+            return;
+          }
+
+          // Not a button press: drop the type prompt and fall through.
+          await redis.del(typePromptKey);
+        }
+      }
+
       // Summary range selection gate (only when consent is complete).
       // If the user previously requested a summary, we ask them to pick a range via buttons.
       {
@@ -402,11 +455,17 @@ const server = http.createServer(async (req, res) => {
           if (selectedRange) {
             await redis.del(promptKey);
 
+            const chosenTypeKey = summaryChosenTypeKey(user.id);
+            const storedType = await redis.get(chosenTypeKey);
+            await redis.del(chosenTypeKey);
+            const reportType: ReportType = isReportType(storedType) ? storedType : "sessionbridge";
+
             const lockKey = summaryLockKey(user.id);
             const lockValue = JSON.stringify({
               messageId: inbound.id ?? "unknown",
               createdAt: new Date().toISOString(),
               range: selectedRange,
+              reportType,
             });
             const acquired = await redis.set(
               lockKey,
@@ -426,10 +485,13 @@ const server = http.createServer(async (req, res) => {
                 userId: user.id,
                 channelUserKey: toDigits,
                 range: selectedRange,
+                reportType,
               });
+              const kindLabel =
+                reportType === "myself_lately" ? "mirror" : "report";
               await sendWhatsAppReply(
                 toDigits,
-                `Generating your report for the last ${summaryRangeToDays(selectedRange)} days. Please wait.`
+                `Generating your ${kindLabel} for the last ${summaryRangeToDays(selectedRange)} days. Please wait.`
               );
             } catch (err) {
               await redis.del(lockKey);
@@ -447,6 +509,7 @@ const server = http.createServer(async (req, res) => {
 
           // Not a button press (or unknown button). Treat this as a fresh message and stop waiting.
           await redis.del(promptKey);
+          await redis.del(summaryChosenTypeKey(user.id));
         }
       }
 
@@ -670,6 +733,7 @@ const server = http.createServer(async (req, res) => {
         userId: identity.userId,
         channelUserKey: identity.channelUserKey.replace(/^\+/, ""),
         range: "last_15_days",
+        reportType: "sessionbridge",
       };
       const job = await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, payload);
       logger.info("debug enqueue-summary", { jobId: job.id ?? String(job.id) });

@@ -1,0 +1,12 @@
+.git
+.claude
+node_modules
+dist
+.env
+.env.*
+dbdiag.json
+dbfix.json
+migrate.json
+overrides.json
+npm-debug.log*
+pnpm-debug.log*

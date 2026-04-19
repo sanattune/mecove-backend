@@ -1,5 +1,15 @@
 import { loadReportCss, loadReportHtml, loadImageAsDataUrl } from "./templateLoader";
-import type { FinalSections, Section4Moment, WindowBundle } from "./types";
+import type {
+  DailyLogBlock,
+  DecisionItem,
+  FinalMirror,
+  FinalSessionBridge,
+  MirrorEntry,
+  OngoingTheme,
+  OpenQuestion,
+  VocabularyEntry,
+  WindowBundle,
+} from "./types";
 
 function escapeHtml(s: string): string {
   return s
@@ -10,88 +20,124 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * Turn plain text into HTML paragraphs using report template classes.
- * Double newlines become separate paragraphs; single newlines become <br>.
+ * Turn straight double quotes inside user-facing text into curly quotes after
+ * HTML-escaping. Keeps the clinical look from feeling rigid.
  */
-function textToParagraphsHtml(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return "<p class=\"text-63\"><span class=\"text-rgb-54-65-83\">—</span></p>";
-  const paragraphs = trimmed.split(/\n\s*\n/).filter((p) => p.trim());
-  if (paragraphs.length === 0) return "<p class=\"text-63\"><span class=\"text-rgb-54-65-83\">—</span></p>";
-  return paragraphs
-    .map(
-      (p) =>
-        `<p class="text-63"><span class="text-rgb-54-65-83">${escapeHtml(p.replace(/\n/g, " ").trim())}</span></p>`
-    )
-    .join("\n");
+function curlyQuotes(s: string): string {
+  return s.replace(/&quot;([^&]*?)&quot;/g, "&ldquo;$1&rdquo;");
 }
 
 /**
- * Logged Moments: per-day blocks with date label (green) and content paragraph.
- * Matches org template: first block uses container-45/46, text-47, paragraph-48, text-49;
- * second and alternating use container-50/51, text-52, paragraph-53, text-54.
+ * Render a single green-anchor + black-body row. Reuses the Logged Moments
+ * DOM pattern; alternates between the two container class variants so
+ * existing CSS produces the page rhythm.
  */
-function buildLoggedMomentsHtml(section4Moments: Section4Moment[]): string {
-  if (!section4Moments || section4Moments.length === 0) {
-    return "<p class=\"text-63\"><span class=\"text-rgb-54-65-83\">No logged moments in this window.</span></p>";
-  }
-  return section4Moments
-    .map((m, i) => {
-      const isFirst = i % 2 === 0;
-      const containerOuter = isFirst ? "container-45" : "container-50";
-      const containerInner = isFirst ? "container-46" : "container-51";
-      const dateClass = isFirst ? "text-47" : "text-52";
-      const paraClass = isFirst ? "paragraph-48" : "paragraph-53";
-      const contentClass = isFirst ? "text-49" : "text-54";
-      return `<div class="${containerOuter}">
+function buildAnchorRowHtml(anchor: string, body: string, index: number): string {
+  const isFirst = index % 2 === 0;
+  const containerOuter = isFirst ? "container-45" : "container-50";
+  const containerInner = isFirst ? "container-46" : "container-51";
+  const anchorClass = isFirst ? "text-47" : "text-52";
+  const paraClass = isFirst ? "paragraph-48" : "paragraph-53";
+  const contentClass = isFirst ? "text-49" : "text-54";
+  const renderedBody = curlyQuotes(escapeHtml(body.trim().replace(/\n/g, " ")));
+  return `<div class="${containerOuter}">
 <div class="${containerInner}">
-<p class="${dateClass}"><span class="text-rgb-38-177-112">${escapeHtml(m.dateLabel.trim())}</span></p>
+<p class="${anchorClass}"><span class="text-rgb-38-177-112">${escapeHtml(anchor.trim())}</span></p>
 </div>
 <div class="${paraClass}">
-<p class="${contentClass}"><span class="text-black">${escapeHtml(m.content.trim().replace(/\n/g, " "))}</span></p>
+<p class="${contentClass}"><span class="text-black">${renderedBody}</span></p>
 </div>
 </div>`;
+}
+
+/**
+ * Recorded vocabulary: a three-column table (word | times | used when).
+ * Denser than the green-anchor rows, and it matches the therapist-brief feel.
+ */
+function buildVocabularyHtml(vocabulary: VocabularyEntry[]): string {
+  if (!vocabulary || vocabulary.length === 0) {
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No emotion or state words recorded in this window.</span></p>';
+  }
+  const rows = vocabulary
+    .map((v) => {
+      const contexts = v.contexts.length > 0 ? v.contexts.join("; ") : "\u2014";
+      return `<tr>
+<td class="vocab-word">${escapeHtml(v.word.trim())}</td>
+<td class="vocab-count">${v.count}</td>
+<td class="vocab-contexts">${curlyQuotes(escapeHtml(contexts))}</td>
+</tr>`;
     })
+    .join("\n");
+  return `<table class="vocab-table">
+<thead>
+<tr><th>Word</th><th style="text-align:right;">Times</th><th>Used when</th></tr>
+</thead>
+<tbody>
+${rows}
+</tbody>
+</table>`;
+}
+
+/**
+ * Ongoing themes section: plain list, sorted highest day-count first.
+ */
+function buildOngoingThemesHtml(themes: OngoingTheme[]): string {
+  if (!themes || themes.length === 0) {
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No themes recurred across multiple days in this window.</span></p>';
+  }
+  const sorted = [...themes].sort((a, b) => {
+    if (b.dayCount !== a.dayCount) return b.dayCount - a.dayCount;
+    return a.label.localeCompare(b.label);
+  });
+  const items = sorted
+    .map(
+      (t) =>
+        `<li><span class="list-anchor">${t.dayCount} days</span>${escapeHtml(t.label.trim())}</li>`
+    )
+    .join("\n");
+  return `<ul class="simple-list">${items}</ul>`;
+}
+
+/**
+ * Open questions section: each question verbatim with its date anchor.
+ */
+function buildOpenQuestionsHtml(questions: OpenQuestion[]): string {
+  if (!questions || questions.length === 0) {
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No internal questions recorded in this window.</span></p>';
+  }
+  return questions
+    .map((q, i) => buildAnchorRowHtml(q.date, `\u201c${q.question.trim().replace(/\s+/g, " ")}\u201d`, i))
     .join("\n");
 }
 
 /**
- * Observed Patterns and Limits: section2Text has optional pattern bullets then a "Limits:" line.
- * We show both: pattern lines first, then "Limits" subheading, then the limits paragraph.
- * If there is no "Limits:" line we show the whole text as body.
+ * Decisions & options section: each decision/option with its date anchor.
  */
-function buildPatternsHtml(section2Text: string): string {
-  const trimmed = section2Text.trim();
-  const match = trimmed.match(/\bLimits:\s*/i);
-  let patternsPart = "";
-  let limitsPart = "";
-  if (match) {
-    patternsPart = trimmed.slice(0, match.index).trim();
-    limitsPart = trimmed.slice(match.index! + match[0].length).trim();
-  } else {
-    limitsPart = trimmed;
+function buildDecisionsHtml(decisions: DecisionItem[]): string {
+  if (!decisions || decisions.length === 0) {
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No decisions or options named in this window.</span></p>';
   }
-  const parts: string[] = [];
-  if (patternsPart) {
-    parts.push(textToParagraphsHtml(patternsPart));
-  }
-  parts.push('<div class="heading-4-59"><p class="text-60"><span class="text-rgb-0-120-159">Limits</span></p></div>');
-  if (limitsPart) {
-    parts.push(textToParagraphsHtml(limitsPart));
-  } else {
-    parts.push(textToParagraphsHtml("Summary is based on the logged entries in this time window."));
-  }
-  return parts.join("\n");
+  return decisions.map((d, i) => buildAnchorRowHtml(d.date, d.text, i)).join("\n");
 }
 
 /**
- * Section 4 (Open Points for Reflection): section3Text as paragraphs, or empty if not included.
+ * Daily log section: one row per logged day. Anchor = date, body = bullets
+ * joined with " \u00b7 " so each fragment reads as a separate clinical note
+ * inside one paragraph block.
  */
-function buildReflectionHtml(finalSections: FinalSections): string {
-  if (!finalSections.section3Included || !finalSections.section3Text.trim()) {
-    return "<p class=\"text-63\"><span class=\"text-rgb-54-65-83\">None for this window.</span></p>";
+function buildDailyLogHtml(blocks: DailyLogBlock[]): string {
+  if (!blocks || blocks.length === 0) {
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No days logged in this window.</span></p>';
   }
-  return textToParagraphsHtml(finalSections.section3Text);
+  return blocks
+    .map((block, i) => {
+      const bullets = block.bullets
+        .map((b) => b.trim())
+        .filter((b) => b.length > 0);
+      const body = bullets.length > 0 ? bullets.join(" \u00b7 ") : "\u2014";
+      return buildAnchorRowHtml(block.dateLabel, body, i);
+    })
+    .join("\n");
 }
 
 /**
@@ -117,8 +163,11 @@ function formatTimeWindow(startDate: string, endDate: string): string {
  * Build full HTML report from template and pipeline data.
  * Inlines CSS and logo so the result is self-contained.
  */
-export function buildHtmlReport(windowBundle: WindowBundle, finalSections: FinalSections): string {
-  let html = loadReportHtml();
+export function buildHtmlReport(
+  windowBundle: WindowBundle,
+  finalSessionBridge: FinalSessionBridge
+): string {
+  let html = loadReportHtml("sessionbridge");
   const css = loadReportCss();
 
   const reportDate = formatReportDate(windowBundle.window.endDate);
@@ -143,18 +192,144 @@ export function buildHtmlReport(windowBundle: WindowBundle, finalSections: Final
   html = html.replace(
     "{{SCOPE_DISCLAIMER}}",
     escapeHtml(
-      "This report summarizes only what was explicitly logged during this time window. Days without entries are not represented."
+      "Only what was explicitly logged during this window. Days without entries are not represented. Contains no interpretation or advice \u2014 direct data and quotes only."
     )
   );
-  html = html.replace(
-    "{{LOGGED_MOMENTS_HTML}}",
-    buildLoggedMomentsHtml(finalSections.section4Moments)
+  html = html.replace("{{VOCABULARY_HTML}}", buildVocabularyHtml(finalSessionBridge.vocabulary));
+  html = html.replace("{{THEMES_HTML}}", buildOngoingThemesHtml(finalSessionBridge.ongoingThemes));
+  html = html.replace("{{QUESTIONS_HTML}}", buildOpenQuestionsHtml(finalSessionBridge.openQuestions));
+  html = html.replace("{{DECISIONS_HTML}}", buildDecisionsHtml(finalSessionBridge.decisions));
+  html = html.replace("{{DAILY_LOG_HTML}}", buildDailyLogHtml(finalSessionBridge.dailyLog));
+
+  return html;
+}
+
+/**
+ * Render a single recap entry: short green anchor (a date or tag) above a
+ * black body sentence. Reuses the Logged Moments DOM so existing CSS handles
+ * styling. Double-quotes in the body render as curly quotes for readability.
+ */
+function buildMirrorEntryHtml(entry: MirrorEntry, index: number): string {
+  const isFirst = index % 2 === 0;
+  const containerOuter = isFirst ? "container-45" : "container-50";
+  const containerInner = isFirst ? "container-46" : "container-51";
+  const anchorClass = isFirst ? "text-47" : "text-52";
+  const paraClass = isFirst ? "paragraph-48" : "paragraph-53";
+  const contentClass = isFirst ? "text-49" : "text-54";
+  const body = escapeHtml(entry.body.trim().replace(/\n/g, " "))
+    .replace(/&quot;([^&]*?)&quot;/g, "&ldquo;$1&rdquo;");
+  return `<div class="${containerOuter}">
+<div class="${containerInner}">
+<p class="${anchorClass}"><span class="text-rgb-38-177-112">${escapeHtml(entry.anchor.trim())}</span></p>
+</div>
+<div class="${paraClass}">
+<p class="${contentClass}"><span class="text-black">${body}</span></p>
+</div>
+</div>`;
+}
+
+/**
+ * Render one of the three mirror lists (Patterns / Moments / Flags) as a
+ * blue-heading section with a stack of entry rows. Empty list renders with
+ * a short neutral line so the reader sees the section and its state.
+ */
+function buildMirrorSection(title: string, entries: MirrorEntry[], emptyText: string): string {
+  const body =
+    entries && entries.length > 0
+      ? entries.map((entry, i) => buildMirrorEntryHtml(entry, i)).join("\n")
+      : `<p class="text-63"><span class="text-rgb-54-65-83">${escapeHtml(emptyText)}</span></p>`;
+  return `<div class="section-41">
+<div class="heading-3-42">
+<p class="text-43"><span class="text-rgb-0-70-161">${escapeHtml(title)}</span></p>
+</div>
+<div class="container-44">
+${body}
+</div>
+</div>`;
+}
+
+/**
+ * Render the opener sentence as a full-width paragraph using the scope
+ * block's body styling. Visually distinct from section headings but
+ * integrated with the page rhythm.
+ */
+function buildMirrorOpenerHtml(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const rendered = escapeHtml(trimmed).replace(/&quot;([^&]*?)&quot;/g, "&ldquo;$1&rdquo;");
+  return `<div class="container-24">
+<div class="paragraph-25">
+<p class="text-26"><span class="text-rgb-54-65-83">${rendered}</span></p>
+</div>
+</div>`;
+}
+
+function buildMirrorBodyHtml(finalMirror: FinalMirror): string {
+  const parts: string[] = [];
+  parts.push(buildMirrorOpenerHtml(finalMirror.openerSentence));
+  parts.push(
+    buildMirrorSection(
+      "Patterns you kept recording",
+      finalMirror.patterns,
+      "Nothing repeated across multiple days in this window."
+    )
   );
-  html = html.replace(
-    "{{PATTERNS_HTML}}",
-    buildPatternsHtml(finalSections.section2Text)
+  parts.push(
+    buildMirrorSection(
+      "Moments worth noticing",
+      finalMirror.moments,
+      "No stand-out moments in this window."
+    )
   );
-  html = html.replace("{{REFLECTION_HTML}}", buildReflectionHtml(finalSections));
+  parts.push(
+    buildMirrorSection(
+      "Worth flagging",
+      finalMirror.flags,
+      "Nothing recurred enough to flag in this window."
+    )
+  );
+  return parts.filter((p) => p.length > 0).join("\n");
+}
+
+/**
+ * Build the "Myself, Lately" HTML report. Reuses the header/scope block
+ * from sessionbridge for visual identity; body is one block per theme.
+ */
+export function buildMirrorHtmlReport(
+  windowBundle: WindowBundle,
+  finalMirror: FinalMirror
+): string {
+  let html = loadReportHtml("myself_lately");
+  const css = loadReportCss();
+
+  const reportDate = formatReportDate(windowBundle.window.endDate);
+  const timeWindow = formatTimeWindow(
+    windowBundle.window.startDate,
+    windowBundle.window.endDate
+  );
+
+  let logoDataUrl: string;
+  try {
+    logoDataUrl = loadImageAsDataUrl("container-1-7.png");
+  } catch {
+    logoDataUrl =
+      "data:image/svg+xml;base64," +
+      Buffer.from("<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/>").toString("base64");
+  }
+
+  html = html.replace('<link rel="stylesheet" href="styles.css">', `<style>${css}</style>`);
+  html = html.replace("{{LOGO_DATA_URL}}", logoDataUrl);
+  html = html.replace("{{REPORT_DATE}}", escapeHtml(reportDate));
+  html = html.replace("{{TIME_WINDOW}}", escapeHtml(timeWindow));
+  html = html.replace("{{DAYS_WITH_ENTRIES}}", String(windowBundle.counts.daysWithEntries));
+  html = html.replaceAll("{{DAYS_TOTAL}}", String(windowBundle.window.days));
+  html = html.replace(
+    "{{SCOPE_DISCLAIMER}}",
+    escapeHtml(
+      "Your own words, grouped by what actually came up. Only what was logged. Days without entries are not here."
+    )
+  );
+  html = html.replace("{{THEMES_HTML}}", buildMirrorBodyHtml(finalMirror));
 
   return html;
 }

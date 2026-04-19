@@ -20,9 +20,11 @@ src/llm/
 
 Two-stage reply pipeline orchestrated by `ackReply.ts`:
 
-**Stage 1 — micro-classifier** (`ackClassify.ts`): cheap LLM call. Classifies into: `greeting`, `closing`, `trivial`, `summary_request`, `guide_query`, `setup_checkin`, `other`. Receives the last 3 exchanges (up to 6 lines) as `RECENT_CONTEXT` for disambiguation. Simple cases are handled directly without Stage 2. Classifier descriptions are intent-based (not phrase lists) so the LLM uses its full language understanding. Hard rule: emotional content always → `other`, even when `LAST_BOT_REPLY_WAS_QUESTION=true` — emotional weight overrides the question-answer heuristic.
+**Stage 1 — micro-classifier** (`ackClassify.ts`): cheap LLM call. Classifies into: `greeting`, `closing`, `trivial`, `summary_request`, `guide_query`, `setup_checkin`, `journal_entry`. Receives the last 3 exchanges (up to 6 lines) as `RECENT_CONTEXT` for disambiguation. Simple cases are handled directly without Stage 2. Classifier descriptions are intent-based (not phrase lists) so the LLM uses its full language understanding. Hard rule: emotional content always → `journal_entry`, even when `LAST_BOT_REPLY_WAS_QUESTION=true` — emotional weight overrides the question-answer heuristic.
 
-**Stage 2 — full ACK_PROMPT**: only runs for `other`. Uses last 10 messages of conversation history, applies safety policies, reply composition rules, and question-asking logic.
+**Stage 2 — full ACK_PROMPT**: only runs for `journal_entry`. Uses last 10 messages of conversation history, applies safety policies, reply composition rules, and question-asking logic.
+
+The classifier result is returned as `classifierType` on `AckDecision` and persisted to `Message.classifierType` by the worker. This is used downstream for engagement scoring (see `src/commands/CLAUDE.md`).
 
 ## Routing by classification
 
@@ -35,7 +37,7 @@ Two-stage reply pipeline orchestrated by `ackReply.ts`:
 - **`summary_request`** → ack phrase + triggers summary pipeline
 - **`setup_checkin`** → sets `shouldSetupCheckin: true` on `AckDecision`; worker calls `handleCheckinIntent()` to send time-selection buttons, then tags all messages in the batch as `command_reply` so they're excluded from future LLM context
 - **`guide_query`** → `guideReply.ts` — answers using guide content
-- **`other`** → Stage 2 full ACK_PROMPT
+- **`journal_entry`** → Stage 2 full ACK_PROMPT
 
 ## Shared message context helper
 

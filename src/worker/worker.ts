@@ -32,7 +32,7 @@ import {
 import { buildWindowBundle } from "../summary/windowBuilder";
 import { buildMinimalFallbackReport } from "../summary/reportAssembler";
 import { generateSummaryPipeline } from "../summary/pipeline";
-import { summaryLockKey, summaryRangePromptKey } from "../summary/keys";
+import { summaryLockKey, summaryTypePromptKey } from "../summary/keys";
 import {
   REMINDER_QUEUE_NAME,
   JOB_NAME_SCAN_REMINDERS,
@@ -83,19 +83,18 @@ const SUMMARY_TIMEOUT_TEXT = "Summary generation timed out. Please request again
 const BUSY_NOTICE_TEXT =
   "Please wait, I am processing your previous message. Retry command in a moment.";
 
-const SUMMARY_RANGE_PROMPT_TTL_SECONDS = 10 * 60;
-const SUMMARY_RANGE_PROMPT_TEXT =
-  "It seems like you'd like a SessionBridge report summary. If so, select the period below. If not, just keep chatting \u2014 no report will be generated unless you press a button.";
-const SUMMARY_RANGE_BUTTONS: Array<{ id: string; title: string }> = [
-  { id: "summary_range_7", title: "Last 7 days" },
-  { id: "summary_range_15", title: "Last 15 days" },
-  { id: "summary_range_30", title: "Last 30 days" },
+const SUMMARY_PROMPT_TTL_SECONDS = 10 * 60;
+const SUMMARY_TYPE_PROMPT_TEXT =
+  "Looks like you'd like a report. Pick the kind. \"Activity report\" is a neutral summary of what you logged. \"Myself, lately\" is your own words mirrored back, grouped by theme. If you didn't mean to ask, just keep chatting \u2014 no report will be generated unless you press a button.";
+const SUMMARY_TYPE_BUTTONS: Array<{ id: string; title: string }> = [
+  { id: "summary_type_sessionbridge", title: "Activity report" },
+  { id: "summary_type_myself_lately", title: "Myself, lately" },
 ];
 
 type BatchDueReason = "quiet" | "max_cap";
 
-async function sendSummaryRangePrompts(channelUserKey: string): Promise<void> {
-  await sendWhatsAppButtons(channelUserKey, SUMMARY_RANGE_PROMPT_TEXT, SUMMARY_RANGE_BUTTONS);
+async function sendSummaryTypePrompts(channelUserKey: string): Promise<void> {
+  await sendWhatsAppButtons(channelUserKey, SUMMARY_TYPE_PROMPT_TEXT, SUMMARY_TYPE_BUTTONS);
 }
 
 function parseCommand(messageText: string): string | null {
@@ -147,9 +146,9 @@ async function handleSummaryIntent(input: {
     return { kind: "text", replyText: SUMMARY_ALREADY_RUNNING_TEXT };
   }
 
-  await redis.set(summaryRangePromptKey(input.userId), "0", "EX", SUMMARY_RANGE_PROMPT_TTL_SECONDS);
-  await sendSummaryRangePrompts(input.channelUserKey);
-  return { kind: "buttons", replyText: SUMMARY_RANGE_PROMPT_TEXT };
+  await redis.set(summaryTypePromptKey(input.userId), "0", "EX", SUMMARY_PROMPT_TTL_SECONDS);
+  await sendSummaryTypePrompts(input.channelUserKey);
+  return { kind: "buttons", replyText: SUMMARY_TYPE_PROMPT_TEXT };
 }
 
 // Summary worker
@@ -157,7 +156,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
   SUMMARY_QUEUE_NAME,
   async (job) => {
     if (job.name !== JOB_NAME_GENERATE_SUMMARY) return;
-    const { userId, channelUserKey, range } = job.data;
+    const { userId, channelUserKey, range, reportType } = job.data;
 
     const windowDays =
       range === "last_7_days"
@@ -184,6 +183,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
           status: "processing",
           inputMessagesCount: windowBundle.counts.totalMessages,
           inputHash: windowBundle.inputHash,
+          reportType,
         },
       });
       summaryId = summary.id;
@@ -193,10 +193,17 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
         summaryId,
         timezone: "Asia/Kolkata",
         windowBundle,
+        reportType,
       });
 
-      const filename = `mecove-summary-${windowBundle.window.endDate}.pdf`;
-      await sendWhatsAppDocument(channelUserKey, result.pdfBytes, filename, "Your summary is ready.");
+      const filenamePrefix =
+        reportType === "myself_lately" ? "myself-lately" : "sessionbridge";
+      const filename = `${filenamePrefix}-${windowBundle.window.endDate}.pdf`;
+      const caption =
+        reportType === "myself_lately"
+          ? "Your last days, mirrored back."
+          : "Your summary is ready.";
+      await sendWhatsAppDocument(channelUserKey, result.pdfBytes, filename, caption);
 
       await prisma.summary.update({
         where: { id: summaryId },
@@ -224,7 +231,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
           windowBundle = await buildWindowBundle(userId, "Asia/Kolkata", new Date(), windowDays);
         }
         const fallback = await buildMinimalFallbackReport(windowBundle);
-        const fallbackFilename = `mecove-summary-${windowBundle.window.endDate}.pdf`;
+        const fallbackFilename = `sessionbridge-${windowBundle.window.endDate}.pdf`;
         await sendWhatsAppDocument(
           channelUserKey,
           fallback.pdfBytes,

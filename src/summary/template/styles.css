@@ -854,3 +854,85 @@ a.prototype-link {
   flex-basis: auto;
   background-color: rgba(255, 255, 255, 1);
 }
+
+/* SessionBridge additions: vocabulary table, appendix */
+.vocab-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-family: var(--font-family-inter);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-black);
+}
+.vocab-table th {
+  text-align: left;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-rgb-0-120-159);
+  border-bottom: 1px solid rgba(0, 120, 159, 0.2);
+}
+.vocab-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  vertical-align: top;
+}
+.vocab-table td.vocab-word {
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-rgb-38-177-112);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+}
+.vocab-table td.vocab-count {
+  white-space: nowrap;
+  text-align: right;
+  color: var(--text-black);
+  font-variant-numeric: tabular-nums;
+  width: 56px;
+}
+.vocab-table td.vocab-contexts {
+  color: var(--text-black);
+}
+.simple-list {
+  list-style: none;
+  margin: 8px 0 0 0;
+  padding: 0;
+}
+.simple-list li {
+  padding: 6px 0;
+  font-family: var(--font-family-inter);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-black);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+.simple-list .list-anchor {
+  color: var(--text-rgb-38-177-112);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 8px;
+  white-space: nowrap;
+}
+.section-41.appendix {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+.section-41.appendix .heading-3-42 p {
+  font-size: 15px !important;
+}
+.section-41.appendix .container-44 {
+  font-size: 11px;
+  line-height: 16px;
+}
+.section-41.appendix .container-44 p,
+.section-41.appendix .container-44 span {
+  font-size: 11px !important;
+  line-height: 16px !important;
+}

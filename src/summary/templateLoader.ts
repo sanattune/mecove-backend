@@ -1,8 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "../infra/logger";
+import type { ReportType } from "./types";
 
 const TEMPLATE_DIR = path.join(__dirname, "template");
+
+const REPORT_HTML_FILE: Record<ReportType, string> = {
+  sessionbridge: "sessionbridge-report.html",
+  myself_lately: "myself-lately-report.html",
+};
 
 function checkTemplatePath(filePath: string, name: string): void {
   if (!fs.existsSync(filePath)) {
@@ -16,9 +22,10 @@ function checkTemplatePath(filePath: string, name: string): void {
   }
 }
 
-export function loadReportHtml(): string {
-  const p = path.join(TEMPLATE_DIR, "sessionbridge-report.html");
-  checkTemplatePath(p, "sessionbridge-report.html");
+export function loadReportHtml(reportType: ReportType = "sessionbridge"): string {
+  const filename = REPORT_HTML_FILE[reportType];
+  const p = path.join(TEMPLATE_DIR, filename);
+  checkTemplatePath(p, filename);
   return fs.readFileSync(p, "utf8");
 }
 
