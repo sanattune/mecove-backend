@@ -1,0 +1,333 @@
+[
+  {
+    "day": 1,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Today my manager asked me why I chose a particular approach in the task and I froze for a second even though I had a reason. After that I kept replaying it in my head like maybe I sounded confused and now he thinks I do not know what I am doing.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "It is only been a little while since I joined but I already feel like everyone else speaks with so much confidence. I am scared that I am just good at pretending I understand things.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 2
+  },
+  {
+    "day": 3,
+    "chat": [
+      {
+        "index": 1,
+        "u": "A senior asked me to explain my update in the standup and I made it longer than needed because I was nervous. Then later I felt embarrassed because concise answers seem so natural for others.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "Nobody said anything bad directly, but I could feel myself searching their faces for disappointment. It is tiring to turn every normal work conversation into proof that I am not competent.",
+        "r": "Got it."
+      },
+      {
+        "index": 3,
+        "u": "I wish I could just learn without constantly judging myself for not already knowing everything. This job is supposed to be the start, but my mind treats it like a final exam every day.",
+        "r": "Noted. Say more if you'd like."
+      }
+    ]
+  },
+  {
+    "day": 4
+  },
+  {
+    "day": 5,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I got feedback on my pull request today and most of it was reasonable, but one comment said I missed an edge case. That one line stayed with me the whole evening.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "I know reviews are normal and everyone gets them, but when it happens to me I feel exposed. Like they have finally found the gap I was trying to hide.",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 6,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I picked up my guitar for 20 minutes today after a long time. It felt nice to do something where I am allowed to be bad and still enjoy learning.",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "Music makes me feel like there is a part of me outside work performance. I want to protect that somehow instead of letting office stress eat every evening.",
+        "r": "Got it."
+      }
+    ]
+  },
+  {
+    "day": 7
+  },
+  {
+    "day": 8,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Someone from another team asked why my task was taking longer than expected and I felt defensive immediately. I answered politely, but inside I was panicking that now people think I am slow.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "The hard part is I am genuinely still learning the codebase, so sometimes things do take longer. But instead of seeing that as normal, I turn it into a character flaw.",
+        "r": "Got it."
+      },
+      {
+        "index": 3,
+        "u": "I stayed late trying to make up for it, and now I am exhausted. I am not sure if I am working hard or just trying to outrun the feeling that I do not belong.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 9
+  },
+  {
+    "day": 10,
+    "chat": [
+      {
+        "index": 1,
+        "u": "My manager said the output was okay but asked me to be clearer about tradeoffs next time. I heard the words normally, but my brain translated it into you are not thinking deeply enough.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "I hate how quickly feedback becomes identity for me. It is not just that the work needs improvement, it becomes I need improvement as a person.",
+        "r": "Acknowledged. That sounds heavy."
+      }
+    ]
+  },
+  {
+    "day": 11
+  },
+  {
+    "day": 12,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Today was better because I got through a task without anyone questioning me much. But even then I kept expecting some hidden mistake to appear later.",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "It feels like my confidence depends too much on external validation. If no one criticizes me, I am okay for a while, but one question can undo the whole day.",
+        "r": "Got it."
+      }
+    ]
+  },
+  {
+    "day": 13,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I listened to some old songs I used to practice in college and remembered how much I liked figuring out melodies by ear. I miss having that kind of curiosity without pressure.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "Maybe I should keep one evening a week for music properly. Not as another productivity goal, just as something that keeps me connected to myself.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 14
+  },
+  {
+    "day": 15,
+    "chat": [
+      {
+        "index": 1,
+        "u": "In a meeting today someone challenged my estimate and asked if I had considered dependencies. I had considered some, but not all, and I felt my face get hot immediately.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "After the call I kept thinking maybe this is why they should not have hired me. That sounds dramatic, but the thought comes so fast when I am questioned in front of others.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 3,
+        "u": "I do not mind learning from mistakes in theory. I just hate the public moment where I realize I missed something and everyone else realizes it too.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 16
+  },
+  {
+    "day": 17,
+    "chat": [
+      {
+        "index": 1,
+        "u": "My manager actually told me today that asking for clarification earlier would help, and he said it pretty calmly. I think I wait too long because I am scared questions will reveal I am not good enough.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "The irony is that by not asking, I make the work harder and then feel even more incompetent. It is like I am protecting an image that is already stressing me out.",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 18
+  },
+  {
+    "day": 19,
+    "chat": [
+      {
+        "index": 1,
+        "u": "A teammate reviewed my change and said the implementation was clean, and I felt relieved for maybe ten minutes. Then I started thinking maybe it was an easy task and that is why it went well.",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "It is annoying that even positive feedback does not fully land. My mind always finds a way to discount it before it can help.",
+        "r": "Got it."
+      }
+    ]
+  },
+  {
+    "day": 20,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I practiced guitar again tonight and tried a song I used to avoid because the chord changes were hard. It reminded me that progress can be slow and still real.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "I wish I could apply that same patience to work. With music I can repeat a mistake without calling myself a failure, but with office work I become harsh immediately.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 21
+  },
+  {
+    "day": 22,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Today someone asked me if I was sure about a small decision I made, and even that simple question triggered me. I started explaining too much because I wanted to prove I had thought about it.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "Later I realized they may have just been checking context, not doubting me. But in the moment every question sounds like an accusation.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 3,
+        "u": "I want to learn the difference between being challenged and being exposed. Right now both feel the same in my body.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 23
+  },
+  {
+    "day": 24,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I had a one-on-one today and my manager said I am ramping up fine but need to communicate blockers earlier. That was probably a fair point, but I still came home feeling like I had been marked down.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "Maybe I keep expecting feedback to be either praise or proof that I am failing. I do not know how to hold it as just information yet.",
+        "r": "Acknowledged."
+      }
+    ]
+  },
+  {
+    "day": 25
+  },
+  {
+    "day": 26,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I noticed today that I did ask one question earlier instead of hiding confusion. It felt uncomfortable, but the answer saved me from going in the wrong direction for hours.",
+        "r": "Noted."
+      },
+      {
+        "index": 2,
+        "u": "Maybe asking is not as embarrassing as I make it in my head. It still feels risky, but at least today it helped.",
+        "r": "Got it."
+      }
+    ]
+  },
+  {
+    "day": 27,
+    "chat": [
+      {
+        "index": 1,
+        "u": "I spent some time learning a new song tutorial today and did not rush through it. I liked having a learning curve that was mine and not being judged by a sprint board or review comments.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 2,
+        "u": "It sounds small, but music makes the week feel less like one long test of competence. I want to keep that space alive.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 28
+  },
+  {
+    "day": 29,
+    "chat": [
+      {
+        "index": 1,
+        "u": "There was another review today with a few suggestions, and I still felt that sting at first. But I did not spiral as badly as earlier this month.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "I tried to separate the comment from my whole identity and just wrote down what needed to change. It felt mechanical, but it helped.",
+        "r": "Acknowledged."
+      },
+      {
+        "index": 3,
+        "u": "I am not suddenly confident, but I can see that questions at work do not always mean I am failing. Sometimes they are just part of how work gets better.",
+        "r": "Noted."
+      }
+    ]
+  },
+  {
+    "day": 30,
+    "chat": [
+      {
+        "index": 1,
+        "u": "Looking back at this month, I still get triggered when someone questions my work, especially in public. But I also handled a few moments better than I expected.",
+        "r": "Got it."
+      },
+      {
+        "index": 2,
+        "u": "I think the imposter feeling is still there, but it is not the only story now. There is also evidence that I am learning, asking better questions, and slowly finding space for music again.",
+        "r": "Acknowledged."
+      }
+    ]
+  }
+]

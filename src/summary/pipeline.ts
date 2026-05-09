@@ -1,30 +1,62 @@
 import { logger } from "../infra/logger";
 import { loadLLMConfig } from "../llm/config";
-import { buildWindowBundle } from "./windowBuilder";
-import {
-  buildCanonicalizerPrompt,
-  buildGuardfixPrompt,
-  buildWriterS2S3Prompt,
-  buildWriterS4Prompt,
-  PROMPT_VERSIONS,
-} from "./prompts";
+import { buildCanonicalizerPrompt, PROMPT_VERSIONS } from "./prompts";
 import { writeSummaryArtifact, writeSummaryErrorArtifact } from "./redisArtifacts";
-import { assembleFinalReport, renderReportPdf } from "./reportAssembler";
 import { runJsonStage, SummaryStageError } from "./stageRunner";
+import { isCanonicalDoc } from "./validation";
+import type { ReportType, SummaryPipelineResult, WindowBundle } from "./types";
+
 import {
-  isCanonicalDoc,
-  isDraftS2S3,
-  isDraftS4,
-  isFinalSections,
-  validateFinalSectionRules,
-} from "./validation";
-import type { SummaryPipelineResult, WindowBundle } from "./types";
+  buildSessionBridgeBriefPrompt,
+  buildSessionBridgeGuardfixPrompt,
+} from "./sessionbridge/prompts";
+import {
+  isDraftSessionBridge,
+  isFinalSessionBridge,
+} from "./sessionbridge/validation";
+import {
+  assembleSessionBridgeReport,
+  renderSessionBridgePdf,
+} from "./sessionbridge/assembler";
+
+import {
+  buildMirrorGuardfixPrompt,
+  buildMirrorRecapPrompt,
+} from "./myself-lately/prompts";
+import { isFinalMirror, isMirrorDraft } from "./myself-lately/validation";
+import {
+  assembleMirrorReport,
+  normalizeFinalMirror,
+  renderMirrorPdf,
+} from "./myself-lately/assembler";
+
+export type SummaryArtifactWriter = {
+  writeArtifact: (
+    userId: string,
+    summaryId: string,
+    stage: string,
+    payload: unknown
+  ) => Promise<void>;
+  writeErrorArtifact: (
+    userId: string,
+    summaryId: string,
+    stage: string,
+    error: string,
+    rawSnippet?: string
+  ) => Promise<void>;
+};
+
+const redisArtifactWriter: SummaryArtifactWriter = {
+  writeArtifact: writeSummaryArtifact,
+  writeErrorArtifact: writeSummaryErrorArtifact,
+};
 
 function stageFailureTag(stage: string): string {
   if (stage.startsWith("L1_")) return "L1_FAIL";
-  if (stage.startsWith("L2A_")) return "L2A_FAIL";
-  if (stage.startsWith("L2B_")) return "L2B_FAIL";
-  if (stage.startsWith("L3_")) return "L3_FAIL";
+  if (stage === "L2_SESSIONBRIDGE_BRIEF") return "L2_SB_FAIL";
+  if (stage === "L3_SESSIONBRIDGE_GUARDFIX") return "L3_SB_FAIL";
+  if (stage === "L2_MIRROR_RECAP") return "L2_MIRROR_FAIL";
+  if (stage === "L3_MIRROR_GUARDFIX") return "L3_MIRROR_FAIL";
   return "ASSEMBLY_FAIL";
 }
 
@@ -33,16 +65,19 @@ type GenerateSummaryPipelineInput = {
   summaryId: string;
   timezone?: string;
   windowBundle?: WindowBundle;
+  artifactWriter?: SummaryArtifactWriter;
+  reportType?: ReportType;
 };
 
 export async function generateSummaryPipeline(
   input: GenerateSummaryPipelineInput
 ): Promise<SummaryPipelineResult> {
   const model = loadLLMConfig();
-  const windowBundle =
-    input.windowBundle ?? (await buildWindowBundle(input.userId, input.timezone ?? "Asia/Kolkata"));
+  const artifactWriter = input.artifactWriter ?? redisArtifactWriter;
+  const windowBundle = input.windowBundle ?? (await buildDbWindowBundle(input));
+  const reportType: ReportType = input.reportType ?? "sessionbridge";
 
-  await writeSummaryArtifact(input.userId, input.summaryId, "window_bundle", windowBundle);
+  await artifactWriter.writeArtifact(input.userId, input.summaryId, "window_bundle", windowBundle);
 
   try {
     const canonicalStarted = Date.now();
@@ -59,91 +94,109 @@ export async function generateSummaryPipeline(
       stage: "L1_CANONICALIZER",
       latencyMs: Date.now() - canonicalStarted,
     });
-    await writeSummaryArtifact(input.userId, input.summaryId, "canonical", canonical);
+    await artifactWriter.writeArtifact(input.userId, input.summaryId, "canonical", canonical);
 
-    const draftS2S3Started = Date.now();
-    const draftS2S3 = await runJsonStage({
-      stage: "L2A_WRITER_S2_S3",
-      prompt: buildWriterS2S3Prompt(
+    if (reportType === "myself_lately") {
+      const recapStarted = Date.now();
+      const mirrorDraft = await runJsonStage({
+        stage: "L2_MIRROR_RECAP",
+        prompt: buildMirrorRecapPrompt(canonical, windowBundle.window.days),
+        maxTokens: 3600,
+        validate: isMirrorDraft,
+        complexity: "high",
+        reasoning: false,
+      });
+      logger.info("summary stage done", {
+        summaryId: input.summaryId,
+        stage: "L2_MIRROR_RECAP",
+        latencyMs: Date.now() - recapStarted,
+      });
+      await artifactWriter.writeArtifact(input.userId, input.summaryId, "mirror_draft", mirrorDraft);
+
+      const guardfixMirrorStarted = Date.now();
+      const finalMirror = await runJsonStage({
+        stage: "L3_MIRROR_GUARDFIX",
+        prompt: buildMirrorGuardfixPrompt(canonical, mirrorDraft, windowBundle.window.days),
+        maxTokens: 3600,
+        validate: isFinalMirror,
+        complexity: "high",
+        reasoning: true,
+      });
+      logger.info("summary stage done", {
+        summaryId: input.summaryId,
+        stage: "L3_MIRROR_GUARDFIX",
+        latencyMs: Date.now() - guardfixMirrorStarted,
+      });
+      await artifactWriter.writeArtifact(input.userId, input.summaryId, "final_mirror", finalMirror);
+
+      const normalized = normalizeFinalMirror(finalMirror);
+      const finalReportText = assembleMirrorReport(windowBundle, normalized);
+      const pdfBytes = await renderMirrorPdf(windowBundle, normalized);
+      const promptVersionString = [
+        `canon:${PROMPT_VERSIONS.canonicalizer}`,
+        `mr:${PROMPT_VERSIONS.mirrorRecap}`,
+        `mgf:${PROMPT_VERSIONS.mirrorGuardfix}`,
+      ].join("|");
+
+      return {
+        reportType: "myself_lately",
+        windowBundle,
         canonical,
-        windowBundle.section3AllowedByCounts,
-        windowBundle.window.days
-      ),
-      maxTokens: 2200,
-      validate: isDraftS2S3,
-      complexity: 'high',
-      reasoning: false,
-    });
-    logger.info("summary stage done", {
-      summaryId: input.summaryId,
-      stage: "L2A_WRITER_S2_S3",
-      latencyMs: Date.now() - draftS2S3Started,
-    });
-    await writeSummaryArtifact(input.userId, input.summaryId, "draft_s2_s3", draftS2S3);
+        mirrorDraft,
+        finalMirror,
+        finalReportText,
+        pdfBytes,
+        promptVersionString,
+        modelName: model.modelName,
+      };
+    }
 
-    const draftS4Started = Date.now();
-    const draftS4 = await runJsonStage({
-      stage: "L2B_WRITER_S4",
-      prompt: buildWriterS4Prompt(canonical, windowBundle.window.days),
-      maxTokens: 3600,
-      validate: isDraftS4,
-      complexity: 'high',
+    const briefStarted = Date.now();
+    const draft = await runJsonStage({
+      stage: "L2_SESSIONBRIDGE_BRIEF",
+      prompt: buildSessionBridgeBriefPrompt(canonical, windowBundle.window.days),
+      maxTokens: 4200,
+      validate: isDraftSessionBridge,
+      complexity: "high",
       reasoning: false,
     });
     logger.info("summary stage done", {
       summaryId: input.summaryId,
-      stage: "L2B_WRITER_S4",
-      latencyMs: Date.now() - draftS4Started,
+      stage: "L2_SESSIONBRIDGE_BRIEF",
+      latencyMs: Date.now() - briefStarted,
     });
-    await writeSummaryArtifact(input.userId, input.summaryId, "draft_s4", draftS4);
+    await artifactWriter.writeArtifact(input.userId, input.summaryId, "sessionbridge_draft", draft);
 
     const guardfixStarted = Date.now();
-    const finalSections = await runJsonStage({
-      stage: "L3_GUARDFIX",
-      prompt: buildGuardfixPrompt(
-        canonical,
-        draftS2S3,
-        draftS4,
-        windowBundle.section3AllowedByCounts,
-        windowBundle.window.days
-      ),
-      maxTokens: 3500,
-      validate: isFinalSections,
-      complexity: 'high',
+    const finalSessionBridge = await runJsonStage({
+      stage: "L3_SESSIONBRIDGE_GUARDFIX",
+      prompt: buildSessionBridgeGuardfixPrompt(canonical, draft, windowBundle.window.days),
+      maxTokens: 4200,
+      validate: isFinalSessionBridge,
+      complexity: "high",
       reasoning: true,
     });
     logger.info("summary stage done", {
       summaryId: input.summaryId,
-      stage: "L3_GUARDFIX",
+      stage: "L3_SESSIONBRIDGE_GUARDFIX",
       latencyMs: Date.now() - guardfixStarted,
     });
+    await artifactWriter.writeArtifact(input.userId, input.summaryId, "sessionbridge_final", finalSessionBridge);
 
-    const sectionRuleErrors = validateFinalSectionRules(
-      finalSections,
-      canonical.limitsSignals.reflectionDefensible,
-      windowBundle.section3AllowedByCounts
-    );
-    if (sectionRuleErrors.length > 0) {
-      throw new Error(`Final section validation failed: ${sectionRuleErrors.join("; ")}`);
-    }
-
-    await writeSummaryArtifact(input.userId, input.summaryId, "final_sections", finalSections);
-
-    const finalReportText = assembleFinalReport(windowBundle, finalSections);
-    const pdfBytes = await renderReportPdf(windowBundle, finalSections);
+    const finalReportText = assembleSessionBridgeReport(windowBundle, finalSessionBridge);
+    const pdfBytes = await renderSessionBridgePdf(windowBundle, finalSessionBridge);
     const promptVersionString = [
       `canon:${PROMPT_VERSIONS.canonicalizer}`,
-      `wA:${PROMPT_VERSIONS.writerS2S3}`,
-      `wB:${PROMPT_VERSIONS.writerS4}`,
-      `gf:${PROMPT_VERSIONS.guardfix}`,
+      `sb:${PROMPT_VERSIONS.sessionbridgeBrief}`,
+      `sbgf:${PROMPT_VERSIONS.sessionbridgeGuardfix}`,
     ].join("|");
 
     return {
+      reportType: "sessionbridge",
       windowBundle,
       canonical,
-      draftS2S3,
-      draftS4,
-      finalSections,
+      draft,
+      final: finalSessionBridge,
       finalReportText,
       pdfBytes,
       promptVersionString,
@@ -158,7 +211,7 @@ export async function generateSummaryPipeline(
         tag: stageFailureTag(err.stage),
         error: err.message,
       });
-      await writeSummaryErrorArtifact(input.userId, input.summaryId, err.stage, err.message, err.rawSnippet);
+      await artifactWriter.writeErrorArtifact(input.userId, input.summaryId, err.stage, err.message, err.rawSnippet);
     } else {
       logger.error("summary pipeline failed", {
         summaryId: input.summaryId,
@@ -166,7 +219,7 @@ export async function generateSummaryPipeline(
         tag: "ASSEMBLY_FAIL",
         error: err instanceof Error ? err.message : String(err),
       });
-      await writeSummaryErrorArtifact(
+      await artifactWriter.writeErrorArtifact(
         input.userId,
         input.summaryId,
         "PIPELINE",
@@ -175,4 +228,11 @@ export async function generateSummaryPipeline(
     }
     throw err;
   }
+}
+
+async function buildDbWindowBundle(
+  input: Pick<GenerateSummaryPipelineInput, "userId" | "timezone">
+): Promise<WindowBundle> {
+  const { buildWindowBundle } = await import("./windowBuilder");
+  return await buildWindowBundle(input.userId, input.timezone ?? "Asia/Kolkata");
 }

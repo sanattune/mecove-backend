@@ -9,6 +9,7 @@ COPY package.json pnpm-lock.yaml* ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 COPY consent.config.yaml ./
+COPY mvp-access.config.yaml ./
 
 RUN if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi
 
@@ -43,6 +44,7 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/consent.config.yaml ./
+COPY --from=build /app/mvp-access.config.yaml ./
 COPY --from=build /app/dist/summary/template ./dist/summary/template
 
 # Prisma CLI may need to download/write engine binaries at runtime (e.g., during migrations).

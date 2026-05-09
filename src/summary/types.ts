@@ -1,3 +1,6 @@
+import type { DraftSessionBridge, FinalSessionBridge } from "./sessionbridge/types";
+import type { MirrorDraft, FinalMirror } from "./myself-lately/types";
+
 export type SignalBucket = "LOW" | "MEDIUM" | "HIGH";
 export type DataDensity = "sparse" | "moderate" | "dense";
 
@@ -69,47 +72,33 @@ export type CanonicalDoc = {
   };
 };
 
-export type DraftS2S3 = {
-  section2Text: string;
-  section3Text: string;
-  section3Included: boolean;
-};
-
-/** One day in Logged Moments: short date label (e.g. "March seven") and paragraph content. */
-export type Section4Moment = {
-  dateLabel: string;
-  content: string;
-};
-
-export type DraftS4 = {
-  section4Moments: Section4Moment[];
-};
-
-export type FinalSections = {
-  status: "PASS" | "FIXED";
-  changes: string[];
-  section2Text: string;
-  section3Text: string;
-  section3Included: boolean;
-  section4Moments: Section4Moment[];
-};
-
 export type PromptVersions = {
   canonicalizer: string;
-  writerS2S3: string;
-  writerS4: string;
-  guardfix: string;
+  sessionbridgeBrief: string;
+  sessionbridgeGuardfix: string;
+  mirrorRecap: string;
+  mirrorGuardfix: string;
 };
 
-export type SummaryPipelineResult = {
+export type ReportType = "sessionbridge" | "myself_lately";
+
+type SummaryPipelineCommon = {
   windowBundle: WindowBundle;
   canonical: CanonicalDoc;
-  draftS2S3: DraftS2S3;
-  draftS4: DraftS4;
-  finalSections: FinalSections;
   finalReportText: string;
   pdfBytes: Buffer;
   promptVersionString: string;
   modelName: string;
 };
 
+export type SummaryPipelineResult =
+  | (SummaryPipelineCommon & {
+      reportType: "sessionbridge";
+      draft: DraftSessionBridge;
+      final: FinalSessionBridge;
+    })
+  | (SummaryPipelineCommon & {
+      reportType: "myself_lately";
+      mirrorDraft: MirrorDraft;
+      finalMirror: FinalMirror;
+    });

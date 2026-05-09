@@ -83,6 +83,7 @@ model Summary {
   inputMessagesCount Int      @default(0)
   inputHash          String?
   error              String?  @db.Text
+  reportType         String   @default("sessionbridge")
 
   user User @relation(fields: [userId], references: [id])
 
