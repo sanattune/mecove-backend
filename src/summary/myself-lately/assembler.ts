@@ -2,7 +2,7 @@ import { renderHtmlToPdf } from "../../infra/pdf";
 import { logger } from "../../infra/logger";
 import type { WindowBundle } from "../types";
 import { buildMirrorHtmlReport } from "./html";
-import type { FinalMirror, MirrorEntry } from "./types";
+import type { FinalMirror, MomentEntry } from "./types";
 
 /**
  * Deterministic caps on the mirror recap. The LLM guardfix is asked to trim
@@ -10,19 +10,29 @@ import type { FinalMirror, MirrorEntry } from "./types";
  * size ceilings in code before the report is rendered.
  */
 export function normalizeFinalMirror(finalMirror: FinalMirror): FinalMirror {
-  const MAX_PATTERNS = 5;
+  const MAX_COMING_UP = 5;
   const MAX_MOMENTS = 4;
-  const MAX_FLAGS = 4;
-  const trimEntry = (entry: MirrorEntry): MirrorEntry => ({
+  const MAX_NOTICE = 4;
+  const trimSentence = (s: string): string => s.trim().replace(/\s+/g, " ");
+  const trimMoment = (entry: MomentEntry): MomentEntry => ({
     anchor: entry.anchor.trim(),
-    body: entry.body.trim().replace(/\s+/g, " "),
+    body: trimSentence(entry.body),
   });
   return {
     ...finalMirror,
-    openerSentence: finalMirror.openerSentence.trim().replace(/\s+/g, " "),
-    patterns: finalMirror.patterns.slice(0, MAX_PATTERNS).map(trimEntry),
-    moments: finalMirror.moments.slice(0, MAX_MOMENTS).map(trimEntry),
-    flags: finalMirror.flags.slice(0, MAX_FLAGS).map(trimEntry),
+    openerSentence: trimSentence(finalMirror.openerSentence),
+    whatHasBeenComingUp: finalMirror.whatHasBeenComingUp
+      .slice(0, MAX_COMING_UP)
+      .map(trimSentence)
+      .filter((s) => s.length > 0),
+    momentsThatStoodOut: finalMirror.momentsThatStoodOut
+      .slice(0, MAX_MOMENTS)
+      .map(trimMoment),
+    somethingToNotice: finalMirror.somethingToNotice
+      .slice(0, MAX_NOTICE)
+      .map(trimSentence)
+      .filter((s) => s.length > 0),
+    gentleTakeaway: trimSentence(finalMirror.gentleTakeaway),
   };
 }
 
@@ -44,33 +54,47 @@ export function assembleMirrorReport(
     parts.push("");
   }
 
-  const pushList = (title: string, entries: MirrorEntry[], emptyText: string) => {
+  const pushSentenceList = (title: string, items: string[], emptyText: string) => {
     parts.push(`## ${title}`);
-    if (entries.length === 0) {
+    if (items.length === 0) {
       parts.push(emptyText);
     } else {
-      for (const entry of entries) {
-        parts.push(`- ${entry.anchor.trim()} — ${entry.body.trim()}`);
+      for (const s of items) {
+        parts.push(`- ${s.trim()}`);
       }
     }
     parts.push("");
   };
 
-  pushList(
-    "Patterns you kept recording",
-    finalMirror.patterns,
+  pushSentenceList(
+    "What Has Been Coming Up",
+    finalMirror.whatHasBeenComingUp,
     "Nothing repeated across multiple days in this window."
   );
-  pushList(
-    "Moments worth noticing",
-    finalMirror.moments,
-    "No stand-out moments in this window."
+
+  parts.push(`## Moments That Stood Out`);
+  if (finalMirror.momentsThatStoodOut.length === 0) {
+    parts.push("No stand-out moments in this window.");
+  } else {
+    for (const m of finalMirror.momentsThatStoodOut) {
+      parts.push(`- ${m.anchor.trim()} — ${m.body.trim()}`);
+    }
+  }
+  parts.push("");
+
+  pushSentenceList(
+    "Something to Notice",
+    finalMirror.somethingToNotice,
+    "Nothing recurred enough to notice in this window."
   );
-  pushList(
-    "Worth flagging",
-    finalMirror.flags,
-    "Nothing recurred enough to flag in this window."
-  );
+
+  parts.push(`## Gentle Takeaway`);
+  if (finalMirror.gentleTakeaway.trim()) {
+    parts.push(finalMirror.gentleTakeaway.trim());
+  } else {
+    parts.push("—");
+  }
+  parts.push("");
 
   return parts.join("\n").trimEnd() + "\n";
 }

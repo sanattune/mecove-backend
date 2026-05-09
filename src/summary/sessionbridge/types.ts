@@ -4,23 +4,34 @@
  */
 
 /**
- * Vocabulary entry: a single emotion/state word the person used, with a
- * count of occurrences and short context anchors pulled verbatim from
- * canonical (what the word was attached to + date).
+ * One row in the Words Used in Context table. `statement` is a verbatim
+ * fragment from the user. `reflects` is the user's own emotion word from
+ * the same or a nearby entry — null when no explicit emotion word was
+ * written in context.
  */
-export type VocabularyEntry = {
-  word: string;
-  count: number;
-  contexts: string[]; // e.g. "end of day after team conflicts (Apr 5)"
+export type WordInContext = {
+  statement: string;
+  reflects: string | null;
 };
 
 /**
- * An ongoing theme across the window: short label + number of days it
- * appeared. Sorted highest-to-lowest day count by the brief stage.
+ * An observed theme: a TOPIC the user wrote about across multiple days.
+ * Surface content (work, sleep, family). Sorted highest-to-lowest dayCount.
  */
-export type OngoingTheme = {
-  label: string;   // e.g. "career change / leaving stable job"
+export type ObservedTheme = {
+  label: string;
   dayCount: number;
+};
+
+/**
+ * Moments of Variation: positive-affect or contrasting moments connected to
+ * music, curiosity, enjoyment, relief, self-expression. Date + quote +
+ * brief factual context.
+ */
+export type MomentOfVariation = {
+  date: string;    // "Month D"
+  quote: string;   // verbatim
+  context: string; // brief, factual, no interpretation
 };
 
 /**
@@ -28,42 +39,41 @@ export type OngoingTheme = {
  * possible, with the date it was logged.
  */
 export type OpenQuestion = {
-  question: string;  // ends with "?"
-  date: string;      // "April 7"
+  question: string;
+  date: string;
 };
 
 /**
- * A decision or option the person named — a choice they made, a plan they
- * drafted, an action they stated they would take. Verbatim-ish.
+ * A decision, plan, option, or named intention. Verbatim-ish with date.
  */
 export type DecisionItem = {
-  text: string;    // quoted fragment of the decision/option
-  date: string;    // "April 19"
+  text: string;
+  date: string;
 };
 
-/**
- * One block of the daily log: date header + short factual bullet fragments
- * (quote-first, minimal narrator voice). Rendered as a small-font appendix.
- */
 export type DailyLogBlock = {
-  dateLabel: string;  // "April 5" (month-word + numeric day)
+  dateLabel: string;
   bullets: string[];
 };
 
 export type DraftSessionBridge = {
-  vocabulary: VocabularyEntry[];
-  ongoingThemes: OngoingTheme[];
+  observedThemes: ObservedTheme[];
+  signalsWorthAttention: string[];
+  momentsOfVariation: MomentOfVariation[];
   openQuestions: OpenQuestion[];
-  decisions: DecisionItem[];
+  decisionsAndIntentions: DecisionItem[];
+  wordsInContext: WordInContext[];
   dailyLog: DailyLogBlock[];
 };
 
 export type FinalSessionBridge = {
   status: "PASS" | "FIXED";
   changes: string[];
-  vocabulary: VocabularyEntry[];
-  ongoingThemes: OngoingTheme[];
+  observedThemes: ObservedTheme[];
+  signalsWorthAttention: string[];
+  momentsOfVariation: MomentOfVariation[];
   openQuestions: OpenQuestion[];
-  decisions: DecisionItem[];
+  decisionsAndIntentions: DecisionItem[];
+  wordsInContext: WordInContext[];
   dailyLog: DailyLogBlock[];
 };

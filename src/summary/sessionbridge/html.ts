@@ -11,45 +11,18 @@ import type {
   DailyLogBlock,
   DecisionItem,
   FinalSessionBridge,
-  OngoingTheme,
+  MomentOfVariation,
+  ObservedTheme,
   OpenQuestion,
-  VocabularyEntry,
+  WordInContext,
 } from "./types";
 
 /**
- * Recorded vocabulary: a three-column table (word | times | used when).
- * Denser than green-anchor rows and matches the therapist-brief feel.
+ * Observed Themes: plain list, sorted highest day-count first.
  */
-function buildVocabularyHtml(vocabulary: VocabularyEntry[]): string {
-  if (!vocabulary || vocabulary.length === 0) {
-    return '<p class="text-63"><span class="text-rgb-54-65-83">No emotion or state words recorded in this window.</span></p>';
-  }
-  const rows = vocabulary
-    .map((v) => {
-      const contexts = v.contexts.length > 0 ? v.contexts.join("; ") : "\u2014";
-      return `<tr>
-<td class="vocab-word">${escapeHtml(v.word.trim())}</td>
-<td class="vocab-count">${v.count}</td>
-<td class="vocab-contexts">${curlyQuotes(escapeHtml(contexts))}</td>
-</tr>`;
-    })
-    .join("\n");
-  return `<table class="vocab-table">
-<thead>
-<tr><th>Word</th><th style="text-align:right;">Times</th><th>Used when</th></tr>
-</thead>
-<tbody>
-${rows}
-</tbody>
-</table>`;
-}
-
-/**
- * Ongoing themes: plain list, sorted highest day-count first.
- */
-function buildOngoingThemesHtml(themes: OngoingTheme[]): string {
+function buildObservedThemesHtml(themes: ObservedTheme[]): string {
   if (!themes || themes.length === 0) {
-    return '<p class="text-63"><span class="text-rgb-54-65-83">No themes recurred across multiple days in this window.</span></p>';
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No topical themes recurred across multiple days in this window.</span></p>';
   }
   const sorted = [...themes].sort((a, b) => {
     if (b.dayCount !== a.dayCount) return b.dayCount - a.dayCount;
@@ -65,33 +38,92 @@ function buildOngoingThemesHtml(themes: OngoingTheme[]): string {
 }
 
 /**
- * Open questions: each question verbatim with its date anchor.
+ * Signals Worth Attention: sentence list (no anchors).
  */
+function buildSignalsHtml(signals: string[]): string {
+  if (!signals || signals.length === 0) {
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No internal-state recurrences in this window.</span></p>';
+  }
+  const items = signals
+    .map((s) => {
+      const cleaned = s.trim().replace(/\s+/g, " ");
+      const rendered = curlyQuotes(escapeHtml(cleaned));
+      return `<li class="reflective-item"><span class="text-black">${rendered}</span></li>`;
+    })
+    .join("\n");
+  return `<ul class="reflective-list">
+${items}
+</ul>`;
+}
+
+/**
+ * Moments of Variation: date anchor + quote + brief context.
+ */
+function buildVariationHtml(moments: MomentOfVariation[]): string {
+  if (!moments || moments.length === 0) {
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No moments of variation recorded in this window.</span></p>';
+  }
+  return moments
+    .map((m, i) => {
+      const quoted = `“${m.quote.trim().replace(/\s+/g, " ")}”`;
+      const ctx = m.context.trim();
+      const body = ctx.length > 0 ? `${quoted} — ${ctx}` : quoted;
+      return buildAnchorRowHtml(m.date, body, i);
+    })
+    .join("\n");
+}
+
 function buildOpenQuestionsHtml(questions: OpenQuestion[]): string {
   if (!questions || questions.length === 0) {
     return '<p class="text-63"><span class="text-rgb-54-65-83">No internal questions recorded in this window.</span></p>';
   }
   return questions
     .map((q, i) =>
-      buildAnchorRowHtml(q.date, `\u201c${q.question.trim().replace(/\s+/g, " ")}\u201d`, i)
+      buildAnchorRowHtml(q.date, `“${q.question.trim().replace(/\s+/g, " ")}”`, i)
     )
     .join("\n");
 }
 
-/**
- * Decisions & options: each decision/option with its date anchor.
- */
 function buildDecisionsHtml(decisions: DecisionItem[]): string {
   if (!decisions || decisions.length === 0) {
-    return '<p class="text-63"><span class="text-rgb-54-65-83">No decisions or options named in this window.</span></p>';
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No decisions or intentions named in this window.</span></p>';
   }
   return decisions.map((d, i) => buildAnchorRowHtml(d.date, d.text, i)).join("\n");
 }
 
 /**
- * Daily log appendix: one row per logged day. Anchor = date, body = bullets
- * joined so each fragment reads as a separate clinical note inside one block.
+ * Words Used in Context: compact two-column table.
+ *
+ * Designed to read as a small reference table — reduced visual importance
+ * versus the old per-word vocabulary block. Each row is a verbatim
+ * statement with the user's own emotion word (or em-dash when none).
  */
+function buildWordsInContextHtml(words: WordInContext[]): string {
+  if (!words || words.length === 0) {
+    return '<p class="text-63"><span class="text-rgb-54-65-83">No emotion-bearing statements recorded in this window.</span></p>';
+  }
+  const rows = words
+    .map((w) => {
+      const statement = curlyQuotes(escapeHtml(w.statement.trim()));
+      const reflects = w.reflects && w.reflects.trim().length > 0
+        ? escapeHtml(w.reflects.trim())
+        : "—";
+      return `<tr>
+<td class="words-statement">“${statement}”</td>
+<td class="words-reflects">${reflects}</td>
+</tr>`;
+    })
+    .join("\n");
+  return `<table class="words-table">
+<thead>
+<tr><th>Statement / Context</th><th>Reflects</th></tr>
+</thead>
+<tbody>
+${rows}
+</tbody>
+</table>`;
+}
+
 function buildDailyLogHtml(blocks: DailyLogBlock[]): string {
   if (!blocks || blocks.length === 0) {
     return '<p class="text-63"><span class="text-rgb-54-65-83">No days logged in this window.</span></p>';
@@ -101,16 +133,12 @@ function buildDailyLogHtml(blocks: DailyLogBlock[]): string {
       const bullets = block.bullets
         .map((b) => b.trim())
         .filter((b) => b.length > 0);
-      const body = bullets.length > 0 ? bullets.join(" \u00b7 ") : "\u2014";
+      const body = bullets.length > 0 ? bullets.join(" · ") : "—";
       return buildAnchorRowHtml(block.dateLabel, body, i);
     })
     .join("\n");
 }
 
-/**
- * Build the full SessionBridge brief HTML report. Inlines CSS and logo so
- * the output is a self-contained string consumable by Puppeteer.
- */
 export function buildSessionBridgeHtmlReport(
   windowBundle: WindowBundle,
   finalSessionBridge: FinalSessionBridge
@@ -142,16 +170,15 @@ export function buildSessionBridgeHtmlReport(
   html = html.replace(
     "{{SCOPE_DISCLAIMER}}",
     escapeHtml(
-      "Only what was explicitly logged during this window. Days without entries are not represented. Contains no interpretation or advice \u2014 direct data and quotes only."
+      "Only what was explicitly logged during this window. Days without entries are not represented. Contains no interpretation or advice — direct data and quotes only."
     )
   );
-  html = html.replace("{{VOCABULARY_HTML}}", buildVocabularyHtml(finalSessionBridge.vocabulary));
-  html = html.replace("{{THEMES_HTML}}", buildOngoingThemesHtml(finalSessionBridge.ongoingThemes));
-  html = html.replace(
-    "{{QUESTIONS_HTML}}",
-    buildOpenQuestionsHtml(finalSessionBridge.openQuestions)
-  );
-  html = html.replace("{{DECISIONS_HTML}}", buildDecisionsHtml(finalSessionBridge.decisions));
+  html = html.replace("{{THEMES_HTML}}", buildObservedThemesHtml(finalSessionBridge.observedThemes));
+  html = html.replace("{{SIGNALS_HTML}}", buildSignalsHtml(finalSessionBridge.signalsWorthAttention));
+  html = html.replace("{{VARIATION_HTML}}", buildVariationHtml(finalSessionBridge.momentsOfVariation));
+  html = html.replace("{{QUESTIONS_HTML}}", buildOpenQuestionsHtml(finalSessionBridge.openQuestions));
+  html = html.replace("{{DECISIONS_HTML}}", buildDecisionsHtml(finalSessionBridge.decisionsAndIntentions));
+  html = html.replace("{{WORDS_HTML}}", buildWordsInContextHtml(finalSessionBridge.wordsInContext));
   html = html.replace("{{DAILY_LOG_HTML}}", buildDailyLogHtml(finalSessionBridge.dailyLog));
 
   return html;

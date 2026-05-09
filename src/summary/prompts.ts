@@ -3,10 +3,10 @@ import type { CanonicalDoc, PromptVersions, WindowBundle } from "./types";
 
 export const PROMPT_VERSIONS: PromptVersions = {
   canonicalizer: "canonicalizer_v3",
-  sessionbridgeBrief: "sessionbridge_brief_v1",
-  sessionbridgeGuardfix: "sessionbridge_guardfix_v1",
-  mirrorRecap: "mirror_recap_v3",
-  mirrorGuardfix: "mirror_guardfix_v3",
+  sessionbridgeBrief: "sessionbridge_brief_v2",
+  sessionbridgeGuardfix: "sessionbridge_guardfix_v2",
+  mirrorRecap: "mirror_recap_v5",
+  mirrorGuardfix: "mirror_guardfix_v4",
 };
 
 export function buildCanonicalizerPrompt(windowBundle: WindowBundle): string {

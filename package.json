@@ -15,6 +15,7 @@
     "sync:webhook": "tsx src/scripts/syncMetaWebhook.ts",
     "check:reply-queue": "tsx src/scripts/check_reply_queue.ts",
     "report:fixture": "tsx src/scripts/generateReportFixture.ts",
+    "report:fixture:all": "tsx src/scripts/generateAllReportFixtures.ts",
     "report:fixture:clean": "tsx src/scripts/cleanReportFixtures.ts",
     "seed:chat": "tsx seed/seedChatData.ts",
     "seed:generate": "tsx seed/generateChatData.ts"

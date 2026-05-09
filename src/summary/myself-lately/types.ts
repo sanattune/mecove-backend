@@ -1,36 +1,33 @@
 /**
- * Types for the "Myself, Lately" mirror recap — a self-reflection report
- * grouped by patterns, moments, and flags. Second-person voice, factual,
- * no interpretation.
+ * Types for "Myself, Lately" — a self-reflection recap. Soft, observational,
+ * quote-heavy, never diagnostic. Second-person voice. Five sections in render
+ * order: opener, what-has-been-coming-up, moments-that-stood-out,
+ * something-to-notice, gentle-takeaway.
  */
 
 /**
- * A single entry in one of the three mirror lists. `anchor` is the short
- * bold label (a date, a tag, or a quoted word) that prefixes the entry;
- * `body` is the factual description after it, made up of the user's own
- * words and dates drawn from canonical.
+ * A date-anchored moment entry. Used only by `momentsThatStoodOut`; the
+ * other lists are flat string arrays of reflective sentences.
  */
-export type MirrorEntry = {
+export type MomentEntry = {
   anchor: string;
   body: string;
 };
 
-/**
- * Mirror recap: one factual opener sentence naming the surface shape of
- * the window, followed by three optional lists.
- */
 export type MirrorDraft = {
   openerSentence: string;
-  patterns: MirrorEntry[];       // "Patterns you kept recording"
-  moments: MirrorEntry[];        // "Moments worth noticing"
-  flags: MirrorEntry[];          // "Worth flagging"
+  whatHasBeenComingUp: string[];
+  momentsThatStoodOut: MomentEntry[];
+  somethingToNotice: string[];
+  gentleTakeaway: string;
 };
 
 export type FinalMirror = {
   status: "PASS" | "FIXED";
   changes: string[];
   openerSentence: string;
-  patterns: MirrorEntry[];
-  moments: MirrorEntry[];
-  flags: MirrorEntry[];
+  whatHasBeenComingUp: string[];
+  momentsThatStoodOut: MomentEntry[];
+  somethingToNotice: string[];
+  gentleTakeaway: string;
 };

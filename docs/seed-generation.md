@@ -41,6 +41,18 @@ test-data/generated/<persona-slug>/chatlog.json
 pnpm report:fixture test-data/generated/<persona-slug> --days 15
 ```
 
+Generate report artifacts for every fixture under `test-data/generated`:
+
+```bash
+pnpm report:fixture:all --days 15
+```
+
+Preview the discovered commands without generating reports:
+
+```bash
+pnpm report:fixture:all --days 15 --dry-run
+```
+
 The fixture script writes:
 
 - `window-bundle.json`

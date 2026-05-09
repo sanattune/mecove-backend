@@ -17,26 +17,13 @@ export function assembleSessionBridgeReport(
   parts.push(`Days with entries: ${windowBundle.counts.daysWithEntries} of ${windowBundle.window.days}`);
   parts.push("");
 
-  parts.push("## Recorded vocabulary");
-  if (final.vocabulary.length === 0) {
-    parts.push("No emotion or state words recorded in this window.");
-  } else {
-    parts.push("| Word | Times | Used when |");
-    parts.push("|---|---|---|");
-    for (const v of final.vocabulary) {
-      const contexts = v.contexts.length > 0 ? v.contexts.join("; ") : "—";
-      parts.push(`| ${v.word} | ${v.count} | ${contexts} |`);
-    }
-  }
-  parts.push("");
-
-  parts.push("## Ongoing themes");
-  const sortedThemes = [...final.ongoingThemes].sort((a, b) => {
+  parts.push("## Observed Themes");
+  const sortedThemes = [...final.observedThemes].sort((a, b) => {
     if (b.dayCount !== a.dayCount) return b.dayCount - a.dayCount;
     return a.label.localeCompare(b.label);
   });
   if (sortedThemes.length === 0) {
-    parts.push("No themes recurred across multiple days in this window.");
+    parts.push("No topical themes recurred across multiple days in this window.");
   } else {
     for (const t of sortedThemes) {
       parts.push(`- ${t.label} (${t.dayCount} days)`);
@@ -44,7 +31,29 @@ export function assembleSessionBridgeReport(
   }
   parts.push("");
 
-  parts.push("## Open questions");
+  parts.push("## Signals Worth Attention");
+  if (final.signalsWorthAttention.length === 0) {
+    parts.push("No internal-state recurrences in this window.");
+  } else {
+    for (const s of final.signalsWorthAttention) {
+      parts.push(`- ${s.trim()}`);
+    }
+  }
+  parts.push("");
+
+  parts.push("## Moments of Variation");
+  if (final.momentsOfVariation.length === 0) {
+    parts.push("No moments of variation recorded in this window.");
+  } else {
+    for (const m of final.momentsOfVariation) {
+      const ctx = m.context.trim();
+      const tail = ctx.length > 0 ? ` — ${ctx}` : "";
+      parts.push(`- ${m.date} — "${m.quote.trim()}"${tail}`);
+    }
+  }
+  parts.push("");
+
+  parts.push("## Open Questions");
   if (final.openQuestions.length === 0) {
     parts.push("No internal questions recorded in this window.");
   } else {
@@ -54,17 +63,30 @@ export function assembleSessionBridgeReport(
   }
   parts.push("");
 
-  parts.push("## Decisions & options considered");
-  if (final.decisions.length === 0) {
-    parts.push("No decisions or options named in this window.");
+  parts.push("## Decisions / Intentions");
+  if (final.decisionsAndIntentions.length === 0) {
+    parts.push("No decisions or intentions named in this window.");
   } else {
-    for (const d of final.decisions) {
+    for (const d of final.decisionsAndIntentions) {
       parts.push(`- ${d.date} — ${d.text}`);
     }
   }
   parts.push("");
 
-  parts.push("## Appendix · Daily log");
+  parts.push("## Words Used in Context");
+  if (final.wordsInContext.length === 0) {
+    parts.push("No emotion-bearing statements recorded in this window.");
+  } else {
+    parts.push("| Statement / Context | Reflects |");
+    parts.push("|---|---|");
+    for (const w of final.wordsInContext) {
+      const reflects = w.reflects && w.reflects.trim().length > 0 ? w.reflects.trim() : "—";
+      parts.push(`| "${w.statement.trim()}" | ${reflects} |`);
+    }
+  }
+  parts.push("");
+
+  parts.push("## Appendix · Daily Log");
   if (final.dailyLog.length === 0) {
     parts.push("No days logged in this window.");
   } else {
@@ -113,11 +135,13 @@ export async function buildMinimalFallbackReport(
 
   const minimalFinal: FinalSessionBridge = {
     status: "PASS",
-    changes: ["Fallback used: vocabulary and theme extraction skipped."],
-    vocabulary: [],
-    ongoingThemes: [],
+    changes: ["Fallback used: theme/signal/variation/words extraction skipped."],
+    observedThemes: [],
+    signalsWorthAttention: [],
+    momentsOfVariation: [],
     openQuestions: [],
-    decisions: [],
+    decisionsAndIntentions: [],
+    wordsInContext: [],
     dailyLog,
   };
 

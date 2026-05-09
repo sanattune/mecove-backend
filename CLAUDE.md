@@ -94,3 +94,17 @@ Required: `DATABASE_URL` (or `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`), `REDI
 - The build step copies non-TS assets to `dist/`: `src/llm/llm.yaml`, `src/summary/template/` (HTML, CSS, images), `src/summary/prompts/` (recursively, all `.md` prompt templates), `src/engagement/checkin/checkin.yaml`, `src/engagement/nudge/nudge.yaml`
 - Prisma 7 uses `prisma.config.ts` for driver adapter configuration, not the standard `schema.prisma` generator block
 - Docker image installs system Chromium; local dev needs `npx puppeteer browsers install chrome`
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues at `sanattune/mecove-backend` via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical defaults (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at repo root. See `docs/agents/domain.md`.

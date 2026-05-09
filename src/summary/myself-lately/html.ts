@@ -1,39 +1,43 @@
 import { loadImageAsDataUrl, loadReportCss, loadReportHtml } from "../templateLoader";
 import type { WindowBundle } from "../types";
-import { escapeHtml, formatReportDate, formatTimeWindow } from "../reportHtml";
-import type { FinalMirror, MirrorEntry } from "./types";
+import { buildAnchorRowHtml, curlyQuotes, escapeHtml, formatReportDate, formatTimeWindow } from "../reportHtml";
+import type { FinalMirror, MomentEntry } from "./types";
 
 /**
- * Render a single recap entry: short green anchor + black body sentence.
- * Reuses the Logged Moments DOM. Double quotes in body render as curly.
+ * Render a flat-sentence list (used by What Has Been Coming Up + Something
+ * to Notice). No anchor, just one soft observational sentence per item.
  */
-function buildMirrorEntryHtml(entry: MirrorEntry, index: number): string {
-  const isFirst = index % 2 === 0;
-  const containerOuter = isFirst ? "container-45" : "container-50";
-  const containerInner = isFirst ? "container-46" : "container-51";
-  const anchorClass = isFirst ? "text-47" : "text-52";
-  const paraClass = isFirst ? "paragraph-48" : "paragraph-53";
-  const contentClass = isFirst ? "text-49" : "text-54";
-  const body = escapeHtml(entry.body.trim().replace(/\n/g, " "))
-    .replace(/&quot;([^&]*?)&quot;/g, "&ldquo;$1&rdquo;");
-  return `<div class="${containerOuter}">
-<div class="${containerInner}">
-<p class="${anchorClass}"><span class="text-rgb-38-177-112">${escapeHtml(entry.anchor.trim())}</span></p>
-</div>
-<div class="${paraClass}">
-<p class="${contentClass}"><span class="text-black">${body}</span></p>
-</div>
-</div>`;
+function buildSentenceListHtml(sentences: string[], emptyText: string): string {
+  if (!sentences || sentences.length === 0) {
+    return `<p class="text-63"><span class="text-rgb-54-65-83">${escapeHtml(emptyText)}</span></p>`;
+  }
+  const items = sentences
+    .map((s) => {
+      const cleaned = s.trim().replace(/\s+/g, " ");
+      const rendered = curlyQuotes(escapeHtml(cleaned));
+      return `<li class="reflective-item"><span class="text-black">${rendered}</span></li>`;
+    })
+    .join("\n");
+  return `<ul class="reflective-list">
+${items}
+</ul>`;
 }
 
 /**
- * Render one of the three mirror lists (Patterns / Moments / Flags).
+ * Render the moments section (date anchor + body). Reuses the shared anchor
+ * row helper.
  */
-function buildMirrorSection(title: string, entries: MirrorEntry[], emptyText: string): string {
-  const body =
-    entries && entries.length > 0
-      ? entries.map((entry, i) => buildMirrorEntryHtml(entry, i)).join("\n")
-      : `<p class="text-63"><span class="text-rgb-54-65-83">${escapeHtml(emptyText)}</span></p>`;
+function buildMomentsListHtml(moments: MomentEntry[], emptyText: string): string {
+  if (!moments || moments.length === 0) {
+    return `<p class="text-63"><span class="text-rgb-54-65-83">${escapeHtml(emptyText)}</span></p>`;
+  }
+  return moments.map((m, i) => buildAnchorRowHtml(m.anchor, m.body, i)).join("\n");
+}
+
+/**
+ * Section wrapper matching the existing template DOM (heading + body).
+ */
+function buildSection(title: string, body: string): string {
   return `<div class="section-41">
 <div class="heading-3-42">
 <p class="text-43"><span class="text-rgb-0-70-161">${escapeHtml(title)}</span></p>
@@ -44,13 +48,10 @@ ${body}
 </div>`;
 }
 
-/**
- * Opener sentence as a full-width paragraph matching the scope block style.
- */
-function buildMirrorOpenerHtml(text: string): string {
+function buildOpenerHtml(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
-  const rendered = escapeHtml(trimmed).replace(/&quot;([^&]*?)&quot;/g, "&ldquo;$1&rdquo;");
+  const rendered = curlyQuotes(escapeHtml(trimmed));
   return `<div class="container-24">
 <div class="paragraph-25">
 <p class="text-26"><span class="text-rgb-54-65-83">${rendered}</span></p>
@@ -58,37 +59,54 @@ function buildMirrorOpenerHtml(text: string): string {
 </div>`;
 }
 
+function buildGentleTakeawayHtml(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const rendered = curlyQuotes(escapeHtml(trimmed));
+  return `<div class="section-41 gentle-takeaway">
+<div class="heading-3-42">
+<p class="text-43"><span class="text-rgb-0-70-161">Gentle Takeaway</span></p>
+</div>
+<div class="container-44">
+<p class="takeaway-line"><span class="text-rgb-54-65-83">${rendered}</span></p>
+</div>
+</div>`;
+}
+
 function buildMirrorBodyHtml(finalMirror: FinalMirror): string {
   const parts: string[] = [];
-  parts.push(buildMirrorOpenerHtml(finalMirror.openerSentence));
+  parts.push(buildOpenerHtml(finalMirror.openerSentence));
   parts.push(
-    buildMirrorSection(
-      "Patterns you kept recording",
-      finalMirror.patterns,
-      "Nothing repeated across multiple days in this window."
+    buildSection(
+      "What Has Been Coming Up",
+      buildSentenceListHtml(
+        finalMirror.whatHasBeenComingUp,
+        "Nothing repeated across multiple days in this window."
+      )
     )
   );
   parts.push(
-    buildMirrorSection(
-      "Moments worth noticing",
-      finalMirror.moments,
-      "No stand-out moments in this window."
+    buildSection(
+      "Moments That Stood Out",
+      buildMomentsListHtml(
+        finalMirror.momentsThatStoodOut,
+        "No stand-out moments in this window."
+      )
     )
   );
   parts.push(
-    buildMirrorSection(
-      "Worth flagging",
-      finalMirror.flags,
-      "Nothing recurred enough to flag in this window."
+    buildSection(
+      "Something to Notice",
+      buildSentenceListHtml(
+        finalMirror.somethingToNotice,
+        "Nothing recurred enough to notice in this window."
+      )
     )
   );
+  parts.push(buildGentleTakeawayHtml(finalMirror.gentleTakeaway));
   return parts.filter((p) => p.length > 0).join("\n");
 }
 
-/**
- * Build the "Myself, Lately" HTML report. Reuses the shared header + scope
- * block from the template; body is opener + three lists.
- */
 export function buildMirrorHtmlReport(
   windowBundle: WindowBundle,
   finalMirror: FinalMirror
