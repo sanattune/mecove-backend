@@ -25,11 +25,12 @@ model User {
   mvpAcceptedVersion     String?
   encryptedDek           String?   @db.Text
 
-  identities Identity[]
-  messages   Message[]
-  summaries  Summary[]
-  reminders  UserReminder[]
-  settings   UserSettings?
+  identities     Identity[]
+  messages       Message[]
+  summaries      Summary[]
+  reminders      UserReminder[]
+  settings       UserSettings?
+  refreshTokens  RefreshToken[]
 }
 
 model Identity {
@@ -105,6 +106,19 @@ model UserReminder {
   user User @relation(fields: [userId], references: [id])
 
   @@index([nextFireAt, isActive])
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
   @@index([userId])
 }
 
