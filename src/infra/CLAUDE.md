@@ -34,4 +34,12 @@ Cloud API client (Graph API v19.0). Exports:
 
 ## Logger (`logger.ts`)
 
-Structured logger with `.info()`, `.warn()`, `.error()`. ISO timestamp prefix.
+Pino-based structured JSON logger. Exports `logger` and `childLogger(context)` for request-scoped logging. Backwards-compatible with the old `(message, context)` call order — normalises to pino's `(context, message)` internally. `LOG_LEVEL` env var (default `info`); dev mode uses `pino-pretty`.
+
+## OTP (`otp.ts`)
+
+SMS OTP for mobile auth. `generateOtp()` → 6-digit code. `storeOtp()` / `verifyAndConsumeOtp()` use Redis with 10-minute TTL. `sendOtpSms()` sends via AWS SNS (`AWS_SNS_REGION` env var). **Note:** India numbers require DLT registration with TRAI before SMS delivery works.
+
+## Sentry (`sentry.ts`)
+
+`initSentry()` — call at startup (no-op if `SENTRY_DSN` unset). `captureException(err, context?)` — report errors with optional structured context.

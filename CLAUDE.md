@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-meCove is a WhatsApp-based journaling backend. It receives WhatsApp messages via Meta webhook, stores them in PostgreSQL, generates AI-powered acknowledgment replies, and produces periodic summary reports as PDFs.
+meCove is a journaling backend with two channels: WhatsApp (via Meta webhook) and a native mobile app (REST API). It stores messages in PostgreSQL, generates AI-powered acknowledgment replies, and produces periodic summary reports as PDFs.
 
 ## Tech Stack
 
@@ -16,6 +16,8 @@ meCove is a WhatsApp-based journaling backend. It receives WhatsApp messages via
 - **PDF generation:** Puppeteer (system Chromium in Docker, local Chrome otherwise)
 - **HTTP server:** Native Node.js `http` module (no Express/Fastify)
 - **WhatsApp:** Meta Graph API v19.0
+- **Mobile auth:** OTP via AWS SNS, JWT (access 1hr + refresh 30d)
+- **Logging:** pino (structured JSON), Sentry for error monitoring
 
 ## Common Commands
 
@@ -47,8 +49,13 @@ No test framework is currently configured.
 ## Architecture
 
 **Two entry points:**
-- `src/api/server.ts` — HTTP server handling Meta webhook verification/delivery, health checks, and a debug endpoint
+- `src/api/server.ts` — thin HTTP dispatcher: health check, CORS, routes to `webhook/` or `rest/`
 - `src/worker/worker.ts` — BullMQ worker processing reply and summary generation jobs
+
+**API structure (`src/api/`):**
+- `webhook/whatsappHandler.ts` — all WhatsApp webhook logic (verification, message ingestion, button gates)
+- `rest/router.ts` — REST dispatcher for `/api/v1/*`; see `src/api/CLAUDE.md` for endpoint details
+- `common/` — shared utilities: `sendJSON`, `httpHelpers`, `errors`, `mask`
 
 **Message flow:**
 1. WhatsApp message arrives at `POST /webhooks/whatsapp`
@@ -79,7 +86,9 @@ No test framework is currently configured.
 
 Prisma schema at `prisma/schema.prisma`. Config in `prisma.config.ts` (resolves DATABASE_URL or builds from DB_HOST/DB_USER/DB_PASSWORD/DB_NAME; auto-adds SSL for RDS).
 
-**Models:** User → Identity (channel binding) → Message. Summary links to User. UserSettings (1-to-1 with User, created eagerly) holds per-user preferences: `timezone`, `lastNudgedAt`. UserReminder holds scheduled check-ins per user.
+**Models:** User → Identity (channel binding) → Message. Summary links to User. UserSettings (1-to-1 with User, created eagerly) holds per-user preferences: `timezone`, `lastNudgedAt`. UserReminder holds scheduled check-ins per user. RefreshToken stores hashed mobile app refresh tokens with revocation support.
+
+**Identity channels:** `"whatsapp"` (WhatsApp users, gated by allowlist) and `"app"` (mobile app users, open sign-up). A user can have both. Message history queries use `userId` to span all channels.
 
 **Key Message fields:**
 - `category` — broad filter bucket: `user_message`, `command_reply`, `test_feedback`, `summary_request`
@@ -87,7 +96,11 @@ Prisma schema at `prisma/schema.prisma`. Config in `prisma.config.ts` (resolves 
 
 ## Environment Variables
 
-Required: `DATABASE_URL` (or `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`), `REDIS_URL`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_PERMANENT_TOKEN`, `GROQ_API_KEY` (or `OPENAI_API_KEY`), `CONSENT_CONFIG_PATH`.
+Required (WhatsApp): `DATABASE_URL` (or `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`), `REDIS_URL`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_PERMANENT_TOKEN`, `GROQ_API_KEY` (or `OPENAI_API_KEY`), `CONSENT_CONFIG_PATH`, `ENCRYPTION_MASTER_KEY`.
+
+Required (REST/mobile): `JWT_SECRET`, `AWS_SNS_REGION` (default `ap-south-1`), AWS credentials (`AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` or IAM role).
+
+Optional: `SENTRY_DSN`, `LOG_LEVEL` (default `info`), `CORS_ALLOWED_ORIGINS` (default `*`).
 
 ## Build Notes
 
