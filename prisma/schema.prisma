@@ -78,7 +78,9 @@ model Summary {
   rangeEnd           DateTime
   createdAt          DateTime @default(now())
   status             String
+  channel            String   @default("whatsapp")
   summaryText        String?  @db.Text
+  pdfBytes           Bytes?
   modelName          String?
   promptVersion      String?
   inputMessagesCount Int      @default(0)

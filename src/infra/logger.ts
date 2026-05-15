@@ -45,6 +45,8 @@ export const logger = {
   error: makeMethod(pinoLogger.error.bind(pinoLogger)),
 };
 
+export { pinoLogger as pinoInstance };
+
 export function childLogger(context: Record<string, unknown>) {
   const child = pinoLogger.child(context);
   return {

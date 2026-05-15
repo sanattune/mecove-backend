@@ -195,10 +195,11 @@ export async function handleWhatsAppVerification(
 
 export async function handleWhatsAppWebhook(
   req: http.IncomingMessage,
-  res: http.ServerResponse
+  res: http.ServerResponse,
+  preReadBody?: string
 ): Promise<void> {
   try {
-    const raw = await readBody(req);
+    const raw = preReadBody !== undefined ? preReadBody : await readBody(req);
     if (!raw || raw.trim().length === 0) {
       logger.warn("POST /webhooks/whatsapp received empty body", {
         contentType: req.headers["content-type"],
@@ -373,6 +374,7 @@ export async function handleWhatsAppWebhook(
               channelUserKey: toDigits,
               range: selectedRange,
               reportType,
+              channel: "whatsapp",
             });
             const kindLabel = reportType === "myself_lately" ? "mirror" : "report";
             await sendWhatsAppReply(
@@ -572,6 +574,7 @@ export async function handleDebugEnqueueSummary(
       channelUserKey: identity.channelUserKey.replace(/^\+/, ""),
       range: SUMMARY_DEFAULT_RANGE,
       reportType: "sessionbridge",
+      channel: "whatsapp",
     };
     const job = await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, payload);
     logger.info("debug enqueue-summary", { jobId: job.id ?? String(job.id) });

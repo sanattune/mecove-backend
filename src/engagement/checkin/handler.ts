@@ -138,17 +138,7 @@ export async function handleCheckinIntent(input: {
   return bodyText;
 }
 
-/**
- * Persist a new (or updated) reminder and send confirmation.
- * Called from server.ts when user taps a time button.
- */
-export async function setCheckinReminder(input: {
-  userId: string;
-  time: CheckinTime;
-  toDigits: string;
-}): Promise<void> {
-  const { userId, time, toDigits } = input;
-
+export async function upsertCheckinReminderDb(userId: string, time: CheckinTime): Promise<void> {
   const settings = await prisma.userSettings.findUnique({
     where: { userId },
     select: { timezone: true },
@@ -162,34 +152,32 @@ export async function setCheckinReminder(input: {
       data: { isActive: false },
     }),
     prisma.userReminder.create({
-      data: {
-        userId,
-        time,
-        frequencyType: "DAILY",
-        nextFireAt,
-        isActive: true,
-      },
+      data: { userId, time, frequencyType: "DAILY", nextFireAt, isActive: true },
     }),
   ]);
-
-  const label = CHECKIN_TIME_LABELS[time];
-  await sendWhatsAppReply(toDigits, `You're all set! I'll check in with you every day at ${label}.`);
 }
 
-/**
- * Deactivate all reminders for a user and send confirmation.
- * Called from server.ts when user taps "Turn Off".
- */
-export async function turnOffCheckinReminder(input: {
-  userId: string;
-  toDigits: string;
-}): Promise<void> {
-  const { userId, toDigits } = input;
-
+export async function removeCheckinReminderDb(userId: string): Promise<void> {
   await prisma.userReminder.updateMany({
     where: { userId, isActive: true },
     data: { isActive: false },
   });
+}
 
-  await sendWhatsAppReply(toDigits, "Got it, reminders turned off.");
+export async function setCheckinReminder(input: {
+  userId: string;
+  time: CheckinTime;
+  toDigits: string;
+}): Promise<void> {
+  await upsertCheckinReminderDb(input.userId, input.time);
+  const label = CHECKIN_TIME_LABELS[input.time];
+  await sendWhatsAppReply(input.toDigits, `You're all set! I'll check in with you every day at ${label}.`);
+}
+
+export async function turnOffCheckinReminder(input: {
+  userId: string;
+  toDigits: string;
+}): Promise<void> {
+  await removeCheckinReminderDb(input.userId);
+  await sendWhatsAppReply(input.toDigits, "Got it, reminders turned off.");
 }

@@ -1,17 +1,14 @@
-import http from "node:http";
 import crypto from "node:crypto";
+import type { FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { prisma } from "../../../infra/prisma";
-import { sendJSON } from "../../common/sendJSON";
 import { Errors } from "../../common/errors";
 import { childLogger } from "../../../infra/logger";
 import { captureException } from "../../../infra/sentry";
-import { requireAuth } from "../middleware/auth";
 import { checkRateLimit, RateLimits } from "../middleware/rateLimit";
 import { encryptText, decryptText } from "../../../infra/encryption";
 import { getOrCreateUserDek } from "../../../infra/userDek";
 import { generateAckDecision } from "../../../llm/reply/ack/ackReply";
-import type { AuthenticatedRequest } from "../../common/httpTypes";
 
 const REPLY_TIMEOUT_MS = 30_000;
 const MESSAGES_DEFAULT_LIMIT = 50;
@@ -19,8 +16,6 @@ const MESSAGES_DEFAULT_LIMIT = 50;
 const SendMessageSchema = z.object({
   content: z.string().min(1).max(10_000),
 });
-
-import { parseQuery, readBody } from "../../common/httpHelpers";
 
 type MessageItem = {
   id: string;
@@ -59,67 +54,20 @@ function toMessageItems(
   return items;
 }
 
-/**
- * @openapi
- * /messages:
- *   get:
- *     tags: [Messages]
- *     summary: Get message history
- *     description: Returns paginated chat history (user + assistant messages) across all channels, newest first. Excludes command replies and test feedback.
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: query
- *         name: before
- *         schema:
- *           type: string
- *           format: date-time
- *         description: Cursor — return messages older than this ISO timestamp
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           minimum: 1
- *           maximum: 100
- *           default: 50
- *     responses:
- *       200:
- *         description: Message list
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 messages:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/MessageItem'
- *                 hasMore:
- *                   type: boolean
- *       401:
- *         description: Unauthorized
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- */
 export async function handleGetMessages(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  requestId: string
+  request: FastifyRequest<{ Querystring: { before?: string; limit?: string } }>,
+  reply: FastifyReply
 ): Promise<void> {
-  const log = childLogger({ requestId, handler: "getMessages" });
-  if (!requireAuth(req, res)) return;
-  const authedReq = req as AuthenticatedRequest;
+  const log = childLogger({ requestId: request.id, handler: "getMessages" });
+  const userId = request.userId!;
   try {
-    const params = parseQuery(req);
-    const before = params.get("before");
-    const limitRaw = parseInt(params.get("limit") ?? String(MESSAGES_DEFAULT_LIMIT), 10);
-    const limit = isNaN(limitRaw) || limitRaw < 1 || limitRaw > 100 ? MESSAGES_DEFAULT_LIMIT : limitRaw;
+    const { before, limit: limitRaw } = request.query;
+    const limitNum = parseInt(limitRaw ?? String(MESSAGES_DEFAULT_LIMIT), 10);
+    const limit = isNaN(limitNum) || limitNum < 1 || limitNum > 100 ? MESSAGES_DEFAULT_LIMIT : limitNum;
 
     const rows = await prisma.message.findMany({
       where: {
-        userId: authedReq.userId,
+        userId,
         category: { in: ["user_message", "summary_request"] },
         text: { not: null },
         ...(before ? { createdAt: { lt: new Date(before) } } : {}),
@@ -132,118 +80,50 @@ export async function handleGetMessages(
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
 
-    const dek = await getOrCreateUserDek(authedReq.userId);
+    const dek = await getOrCreateUserDek(userId);
     const messages = page.flatMap((row) => toMessageItems(row, dek)).reverse();
 
-    log.info({ userId: authedReq.userId, count: messages.length }, "messages fetched");
-    sendJSON(res, 200, { messages, hasMore });
+    log.info({ userId, count: messages.length }, "messages fetched");
+    reply.code(200).send({ messages, hasMore });
   } catch (err) {
-    captureException(err, { requestId, handler: "getMessages" });
+    captureException(err, { requestId: request.id, handler: "getMessages" });
     log.error({ err }, "getMessages failed");
-    sendJSON(res, 500, Errors.internal());
+    reply.code(500).send(Errors.internal());
   }
 }
 
-/**
- * @openapi
- * /messages/send:
- *   post:
- *     tags: [Messages]
- *     summary: Send a message and get AI reply
- *     description: Stores the user message, runs the AI reply pipeline synchronously, and returns both messages. Times out after 30 seconds. Rate limited to 20 requests per minute.
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [content]
- *             properties:
- *               content:
- *                 type: string
- *                 minLength: 1
- *                 maxLength: 10000
- *     responses:
- *       200:
- *         description: Message sent and reply generated
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 userMessage:
- *                   $ref: '#/components/schemas/MessageItem'
- *                 assistantMessage:
- *                   $ref: '#/components/schemas/MessageItem'
- *       401:
- *         description: Unauthorized
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       429:
- *         description: Rate limited
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       503:
- *         description: AI reply timed out
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- */
-export async function handleSendMessage(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  requestId: string
-): Promise<void> {
-  const log = childLogger({ requestId, handler: "sendMessage" });
-  if (!requireAuth(req, res)) return;
-  const authedReq = req as AuthenticatedRequest;
+export async function handleSendMessage(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const log = childLogger({ requestId: request.id, handler: "sendMessage" });
+  const userId = request.userId!;
   try {
-    const rl = RateLimits.sendMessage(authedReq.userId);
+    const rl = RateLimits.sendMessage(userId);
     const allowed = await checkRateLimit(rl.key, rl.limit, rl.windowSeconds);
     if (!allowed) {
-      sendJSON(res, 429, Errors.rateLimited());
+      reply.code(429).send(Errors.rateLimited());
       return;
     }
 
-    const body = JSON.parse(await readBody(req));
-    const parsed = SendMessageSchema.safeParse(body);
+    const parsed = SendMessageSchema.safeParse(request.body);
     if (!parsed.success) {
-      sendJSON(res, 400, Errors.validation(parsed.error.issues[0].message));
+      reply.code(400).send(Errors.validation(parsed.error.issues[0].message));
       return;
     }
     const { content } = parsed.data;
 
-    // Get or create app Identity for this user
     const identity = await prisma.identity.upsert({
-      where: {
-        channel_channelUserKey: {
-          channel: "app",
-          channelUserKey: authedReq.userId,
-        },
-      },
+      where: { channel_channelUserKey: { channel: "app", channelUserKey: userId } },
       update: {},
-      create: {
-        userId: authedReq.userId,
-        channel: "app",
-        channelUserKey: authedReq.userId,
-      },
+      create: { userId, channel: "app", channelUserKey: userId },
     });
 
-    const dek = await getOrCreateUserDek(authedReq.userId);
+    const dek = await getOrCreateUserDek(userId);
     const encryptedContent = encryptText(content, dek);
     const sourceMessageId = crypto.randomUUID();
     const now = new Date();
 
     const message = await prisma.message.create({
       data: {
-        userId: authedReq.userId,
+        userId,
         identityId: identity.id,
         contentType: "text",
         text: encryptedContent,
@@ -253,11 +133,10 @@ export async function handleSendMessage(
       },
     });
 
-    // Run AI pipeline with timeout
     let decision: Awaited<ReturnType<typeof generateAckDecision>>;
     try {
       decision = await Promise.race([
-        generateAckDecision(authedReq.userId, content),
+        generateAckDecision(userId, content),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("REPLY_TIMEOUT")), REPLY_TIMEOUT_MS)
         ),
@@ -265,17 +144,22 @@ export async function handleSendMessage(
     } catch (err) {
       const isTimeout = err instanceof Error && err.message === "REPLY_TIMEOUT";
       if (isTimeout) {
-        log.warn({ userId: authedReq.userId }, "reply timed out");
-        sendJSON(res, 503, Errors.replyTimeout());
+        log.warn({ userId }, "reply timed out");
+        reply.code(503).send(Errors.replyTimeout());
       } else {
-        captureException(err, { requestId, userId: authedReq.userId });
+        captureException(err, { requestId: request.id, userId });
         log.error({ err }, "generateAckDecision failed");
-        sendJSON(res, 500, Errors.internal());
+        reply.code(500).send(Errors.internal());
       }
       return;
     }
 
-    const replyText = decision.replyText;
+    let replyText = decision.replyText;
+    if (decision.shouldGenerateSummary) {
+      replyText = "You can generate a report from the Reports tab in the app.";
+    } else if (decision.shouldSetupCheckin) {
+      replyText = "You can set your daily check-in time in Settings.";
+    }
     const repliedAt = new Date();
     const encryptedReply = encryptText(replyText, dek);
 
@@ -288,14 +172,14 @@ export async function handleSendMessage(
       },
     });
 
-    log.info({ userId: authedReq.userId, classifierType: decision.classifierType }, "message sent");
-    sendJSON(res, 200, {
+    log.info({ userId, classifierType: decision.classifierType }, "message sent");
+    reply.code(200).send({
       userMessage: { id: `${message.id}:user`, role: "user", content, timestamp: now.toISOString() },
       assistantMessage: { id: `${message.id}:assistant`, role: "assistant", content: replyText, timestamp: repliedAt.toISOString() },
     });
   } catch (err) {
-    captureException(err, { requestId, handler: "sendMessage" });
+    captureException(err, { requestId: request.id, handler: "sendMessage" });
     log.error({ err }, "sendMessage failed");
-    sendJSON(res, 500, Errors.internal());
+    reply.code(500).send(Errors.internal());
   }
 }

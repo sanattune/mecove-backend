@@ -7,4 +7,5 @@ export const Errors = {
   replyTimeout: () => ({ error: "REPLY_TIMEOUT", message: "Reply took too long. Please try again." }),
   invalidOtp: () => ({ error: "INVALID_OTP", message: "Incorrect or expired code." }),
   userNotFound: () => ({ error: "USER_NOT_FOUND", message: "No meCove account linked to this number." }),
+  conflict: (message: string) => ({ error: "CONFLICT", message }),
 };

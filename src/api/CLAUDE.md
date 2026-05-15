@@ -11,13 +11,16 @@ common/            — Shared utilities used by both
 
 ## `server.ts`
 
-Routes by path prefix:
-- `/health` → deep check (DB + Redis), returns `{ status, timestamp, checks }`
-- `/api/v1/*` → `rest/router.ts`
-- `/webhooks/whatsapp` → `webhook/whatsappHandler.ts`
-- `/debug/*` → `webhook/whatsappHandler.ts` (debug endpoints)
+Fastify v5 app. Registers:
+- `@fastify/cors` — `CORS_ALLOWED_ORIGINS` env var (default `*`)
+- `@fastify/swagger` + `@fastify/swagger-ui` — OpenAPI spec at `/api/docs/json`, Swagger UI at `/api/docs`
+- `/health` route — deep check (DB + Redis), returns `{ status, timestamp, checks }`
+- `restPlugin` at `/api/v1` — all REST routes
+- WA webhook plugin (encapsulated) — `/webhooks/whatsapp`, `/debug/*`
 
-Also handles: CORS headers (`CORS_ALLOWED_ORIGINS` env var), OPTIONS preflight, graceful shutdown on SIGTERM/SIGINT (10s drain).
+WA webhook plugin uses `addContentTypeParser('application/json', { parseAs: 'string' })` to capture raw body before Fastify parses it, stores it on `req._rawBodyStr`. Encapsulation ensures this parser doesn't affect REST routes.
+
+Graceful shutdown on SIGTERM/SIGINT (10s drain timeout).
 
 ## `webhook/whatsappHandler.ts`
 
@@ -28,7 +31,13 @@ All WhatsApp logic extracted from the old monolithic server.ts. Exports:
 
 ## `rest/` — Mobile App REST API
 
-Base path: `/api/v1/`
+Implemented as a Fastify plugin (`restPlugin` in `router.ts`). Base path: `/api/v1/`.
+
+Routes are declared in `router.ts` with inline JSON Schema (`schema:`) for OpenAPI docs, and `onRequest: [authenticate]` for protected routes. Handlers are pure `async (request, reply)` functions in `handlers/`.
+
+Auth: `authenticate` in `rest/middleware/auth.ts` is a Fastify `onRequest` hook — verifies Bearer JWT, sets `request.userId`. Rate limiting is done inside handlers (uses `checkRateLimit` from `middleware/rateLimit.ts`).
+
+Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Request-Id` header via `onRequest` hook. Handlers use `childLogger({ requestId: request.id })` for structured logging.
 
 ### Auth endpoints
 
@@ -52,16 +61,28 @@ Base path: `/api/v1/`
 
 **Message send flow:** Store message with `channel="app"` Identity → call `generateAckDecision()` directly (no queue) → store reply → return both in response. App waits for reply in the same HTTP response.
 
-### Planned endpoints (in scope, not yet implemented)
+### Summary endpoints
 
-| Method | Path | Purpose |
+| Method | Path | Description |
 |---|---|---|
-| POST | `/api/v1/summary/generate` | Generate report (type + range in body) |
-| GET | `/api/v1/checkin` | Current reminder status |
-| POST | `/api/v1/checkin/setup` | Set/update/turn off reminder |
-| GET | `/api/v1/stats` | User stats (message count, join date, last report) |
-| DELETE | `/api/v1/account/data` | Clear all messages and summaries |
-| GET | `/api/v1/privacy` | Privacy notice text |
+| POST | `/summary/generate` | Enqueue report (body: `{type, range}`). Returns `{summaryId, status: "queued"}`. One in-flight per user (409 if busy). |
+| GET | `/summary/:id` | Poll status: `queued → processing → success \| success_fallback \| failed` |
+| GET | `/summary/:id/pdf` | Download PDF bytes. Only available when status is success/success_fallback. |
+
+### Checkin endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/checkin` | Returns `{active, time, label}` for active reminder, or `{active: false}`. |
+| POST | `/checkin/setup` | Body: `{time: "06:00"\|"16:00"\|"21:00"\|"off"}`. Sets or turns off daily reminder. |
+
+### Account endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/stats` | Returns `{messageCount, memberSince, lastReport: {type, createdAt} \| null}`. |
+| DELETE | `/account/data` | Permanently deletes all messages and summaries for the user. |
+| GET | `/privacy` | Returns `{message, link}` from consent config. |
 
 **Encryption:** Messages encrypted/decrypted with user's DEK via `getOrCreateUserDek()`. History endpoint decrypts before returning. `decryptText()` is safe on non-encrypted strings.
 

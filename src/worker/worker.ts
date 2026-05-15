@@ -156,7 +156,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
   SUMMARY_QUEUE_NAME,
   async (job) => {
     if (job.name !== JOB_NAME_GENERATE_SUMMARY) return;
-    const { userId, channelUserKey, range, reportType } = job.data;
+    const { userId, channelUserKey, range, reportType, channel = "whatsapp", summaryId: preCreatedSummaryId } = job.data;
 
     const windowDays =
       range === "last_7_days"
@@ -170,23 +170,38 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
 
     const redis = getRedis();
     const lockKey = summaryLockKey(userId);
-    let summaryId: string | null = null;
+    let summaryId: string | null = preCreatedSummaryId ?? null;
     let windowBundle: Awaited<ReturnType<typeof buildWindowBundle>> | null = null;
 
     try {
       windowBundle = await buildWindowBundle(userId, "Asia/Kolkata", new Date(), windowDays);
-      const summary = await prisma.summary.create({
-        data: {
-          userId,
-          rangeStart: new Date(windowBundle.rangeStartUtc),
-          rangeEnd: new Date(windowBundle.rangeEndUtc),
-          status: "processing",
-          inputMessagesCount: windowBundle.counts.totalMessages,
-          inputHash: windowBundle.inputHash,
-          reportType,
-        },
-      });
-      summaryId = summary.id;
+
+      if (summaryId) {
+        await prisma.summary.update({
+          where: { id: summaryId },
+          data: {
+            rangeStart: new Date(windowBundle.rangeStartUtc),
+            rangeEnd: new Date(windowBundle.rangeEndUtc),
+            status: "processing",
+            inputMessagesCount: windowBundle.counts.totalMessages,
+            inputHash: windowBundle.inputHash,
+          },
+        });
+      } else {
+        const summary = await prisma.summary.create({
+          data: {
+            userId,
+            rangeStart: new Date(windowBundle.rangeStartUtc),
+            rangeEnd: new Date(windowBundle.rangeEndUtc),
+            status: "processing",
+            inputMessagesCount: windowBundle.counts.totalMessages,
+            inputHash: windowBundle.inputHash,
+            reportType,
+            channel,
+          },
+        });
+        summaryId = summary.id;
+      }
 
       const result = await generateSummaryPipeline({
         userId,
@@ -196,14 +211,16 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
         reportType,
       });
 
-      const filenamePrefix =
-        reportType === "myself_lately" ? "myself-lately" : "sessionbridge";
-      const filename = `${filenamePrefix}-${windowBundle.window.endDate}.pdf`;
-      const caption =
-        reportType === "myself_lately"
-          ? "Your last days, mirrored back."
-          : "Your summary is ready.";
-      await sendWhatsAppDocument(channelUserKey, result.pdfBytes, filename, caption);
+      if (channel === "whatsapp") {
+        const filenamePrefix =
+          reportType === "myself_lately" ? "myself-lately" : "sessionbridge";
+        const filename = `${filenamePrefix}-${windowBundle.window.endDate}.pdf`;
+        const caption =
+          reportType === "myself_lately"
+            ? "Your last days, mirrored back."
+            : "Your summary is ready.";
+        await sendWhatsAppDocument(channelUserKey, result.pdfBytes, filename, caption);
+      }
 
       await prisma.summary.update({
         where: { id: summaryId },
@@ -215,6 +232,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
           inputMessagesCount: windowBundle.counts.totalMessages,
           inputHash: windowBundle.inputHash,
           error: null,
+          ...(channel === "app" && { pdfBytes: result.pdfBytes as unknown as Uint8Array<ArrayBuffer> }),
         },
       });
     } catch (err) {
@@ -231,13 +249,17 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
           windowBundle = await buildWindowBundle(userId, "Asia/Kolkata", new Date(), windowDays);
         }
         const fallback = await buildMinimalFallbackReport(windowBundle);
-        const fallbackFilename = `sessionbridge-${windowBundle.window.endDate}.pdf`;
-        await sendWhatsAppDocument(
-          channelUserKey,
-          fallback.pdfBytes,
-          fallbackFilename,
-          "Your summary is ready."
-        );
+
+        if (channel === "whatsapp") {
+          const fallbackFilename = `sessionbridge-${windowBundle.window.endDate}.pdf`;
+          await sendWhatsAppDocument(
+            channelUserKey,
+            fallback.pdfBytes,
+            fallbackFilename,
+            "Your summary is ready."
+          );
+        }
+
         if (summaryId) {
           await prisma.summary.update({
             where: { id: summaryId },
@@ -249,6 +271,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
               inputMessagesCount: windowBundle.counts.totalMessages,
               inputHash: windowBundle.inputHash,
               error: `Fallback used: ${reason}`,
+              ...(channel === "app" && { pdfBytes: fallback.pdfBytes as unknown as Uint8Array<ArrayBuffer> }),
             },
           });
         } else {
@@ -263,6 +286,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
               inputMessagesCount: windowBundle.counts.totalMessages,
               inputHash: windowBundle.inputHash,
               error: `Fallback used: ${reason}`,
+              channel,
             },
           });
         }
@@ -279,10 +303,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
         if (summaryId) {
           await prisma.summary.update({
             where: { id: summaryId },
-            data: {
-              status: "failed",
-              error: reason,
-            },
+            data: { status: "failed", error: reason },
           });
         } else if (windowBundle) {
           await prisma.summary.create({
@@ -294,6 +315,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
               inputMessagesCount: windowBundle.counts.totalMessages,
               inputHash: windowBundle.inputHash,
               error: reason,
+              channel,
             },
           });
         } else {
@@ -301,13 +323,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
           const rangeStart = new Date(now);
           rangeStart.setDate(rangeStart.getDate() - 15);
           await prisma.summary.create({
-            data: {
-              userId,
-              rangeStart,
-              rangeEnd: now,
-              status: "failed",
-              error: reason,
-            },
+            data: { userId, rangeStart, rangeEnd: now, status: "failed", error: reason, channel },
           });
         }
         throw err;

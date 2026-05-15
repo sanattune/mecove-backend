@@ -1,4 +1,5 @@
 import http from "node:http";
+import type { FastifyRequest, FastifyReply } from "fastify";
 import jwt from "jsonwebtoken";
 import { sendJSON } from "../../common/sendJSON";
 import { Errors } from "../../common/errors";
@@ -10,6 +11,26 @@ export function getJwtSecret(): string {
   return secret;
 }
 
+export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const authHeader = request.headers["authorization"];
+  if (!authHeader?.startsWith("Bearer ")) {
+    reply.code(401).send(Errors.unauthorized());
+    return;
+  }
+  const token = authHeader.slice(7);
+  try {
+    const payload = jwt.verify(token, getJwtSecret()) as jwt.JwtPayload;
+    if (payload.type !== "access" || !payload.userId) {
+      reply.code(401).send(Errors.unauthorized());
+      return;
+    }
+    request.userId = payload.userId as string;
+  } catch {
+    reply.code(401).send(Errors.unauthorized());
+  }
+}
+
+// Legacy: used by WhatsApp webhook handler (in production)
 export function requireAuth(
   req: http.IncomingMessage,
   res: http.ServerResponse

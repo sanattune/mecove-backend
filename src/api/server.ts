@@ -1,47 +1,22 @@
 import "dotenv/config";
-import fs from "node:fs";
-import path from "node:path";
-import http from "node:http";
-import { parse as parseYaml } from "yaml";
-import { initSentry } from "../infra/sentry";
+import crypto from "node:crypto";
+import Fastify, { type FastifyError } from "fastify";
+import cors from "@fastify/cors";
+import swagger from "@fastify/swagger";
+import swaggerUi from "@fastify/swagger-ui";
+import { initSentry, captureException } from "../infra/sentry";
 import { getKek } from "../infra/encryption";
 import { prisma } from "../infra/prisma";
 import { getRedis } from "../infra/redis";
-import { logger } from "../infra/logger";
-import { restRouter } from "./rest/router";
+import { pinoInstance } from "../infra/logger";
+import { Errors } from "./common/errors";
+import { restPlugin } from "./rest/router";
 import {
   handleWhatsAppVerification,
   handleWhatsAppWebhook,
   handleDebugConsentStatus,
   handleDebugEnqueueSummary,
 } from "./webhook/whatsappHandler";
-
-const OPENAPI_SPEC_PATH = path.resolve("openapi.yaml");
-
-function loadOpenapiSpec(): object | null {
-  try {
-    return parseYaml(fs.readFileSync(OPENAPI_SPEC_PATH, "utf8")) as object;
-  } catch {
-    return null;
-  }
-}
-
-const SWAGGER_UI_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>meCove API Docs</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-  <script>
-    SwaggerUIBundle({ url: '/api/docs/spec', dom_id: '#swagger-ui', deepLinking: true,
-      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset] });
-  </script>
-</body>
-</html>`;
 
 // ── Startup validation ────────────────────────────────────────────────────────
 
@@ -63,114 +38,164 @@ if (!hasDatabaseUrl && !hasDatabaseParts) {
 }
 initSentry();
 
-// ── CORS ──────────────────────────────────────────────────────────────────────
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 const CORS_ORIGINS = process.env.CORS_ALLOWED_ORIGINS?.trim() || "*";
+const PORT = 3000;
 
-function applyCors(_req: http.IncomingMessage, res: http.ServerResponse): void {
-  res.setHeader("Access-Control-Allow-Origin", CORS_ORIGINS);
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
-}
+async function main(): Promise<void> {
+  const app = Fastify({
+    loggerInstance: pinoInstance,
+    genReqId: () => crypto.randomUUID(),
+  });
 
-// ── Server ────────────────────────────────────────────────────────────────────
+  // ── Plugins ─────────────────────────────────────────────────────────────────
 
-const port = 3000;
+  await app.register(cors, {
+    origin: CORS_ORIGINS,
+    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["X-Request-Id"],
+  });
 
-const server = http.createServer(async (req, res) => {
-  applyCors(req, res);
+  await app.register(swagger, {
+    openapi: {
+      openapi: "3.0.3",
+      info: { title: "meCove API", version: "1.0.0", description: "meCove mobile app REST API" },
+      servers: [{ url: "/api/v1" }],
+      components: {
+        securitySchemes: {
+          BearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+        },
+      },
+      tags: [
+        { name: "Auth", description: "OTP sign-in, token refresh, logout" },
+        { name: "Messages", description: "Chat messages and AI replies" },
+        { name: "Summary", description: "Report generation and PDF download" },
+        { name: "Checkin", description: "Daily reminder configuration" },
+        { name: "Account", description: "User stats, data deletion, privacy" },
+      ],
+    },
+  });
 
-  if (req.method === "OPTIONS") {
-    res.statusCode = 204;
-    res.end();
-    return;
-  }
+  await app.register(swaggerUi, {
+    routePrefix: "/api/docs",
+    uiConfig: { deepLinking: true },
+  });
 
-  // Deep health check
-  if ((req.method === "GET" || req.method === "HEAD") && req.url === "/health") {
-    const checks: Record<string, "ok" | "error"> = { db: "ok", redis: "ok" };
-    try { await prisma.$queryRaw`SELECT 1`; } catch { checks.db = "error"; }
-    try { await getRedis().ping(); } catch { checks.redis = "error"; }
-    const degraded = Object.values(checks).some((v) => v === "error");
-    res.statusCode = degraded ? 503 : 200;
-    res.setHeader("Content-Type", "application/json");
-    if (req.method === "HEAD") { res.end(); return; }
-    res.end(JSON.stringify({ status: degraded ? "degraded" : "ok", timestamp: new Date().toISOString(), checks }));
-    return;
-  }
+  // ── Hooks ──────────────────────────────────────────────────────────────────
 
-  const pathname = req.url?.split("?")[0];
+  app.addHook("onRequest", (_request, reply, done) => {
+    reply.header("X-Request-Id", _request.id);
+    done();
+  });
 
-  // API docs
-  if (req.method === "GET" && pathname === "/api/docs/spec") {
-    const spec = loadOpenapiSpec();
-    if (!spec) {
-      res.statusCode = 404;
-      res.setHeader("Content-Type", "text/plain");
-      res.end("openapi.yaml not found — run: pnpm generate:openapi");
+  // ── Error handlers ─────────────────────────────────────────────────────────
+
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    if (error.validation) {
+      reply.code(400).send(Errors.validation(error.message));
       return;
     }
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(spec));
-    return;
-  }
-  if (req.method === "GET" && pathname === "/api/docs") {
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "text/html");
-    res.end(SWAGGER_UI_HTML);
-    return;
-  }
-
-  // REST API
-  if (pathname?.startsWith("/api/v1")) {
-    await restRouter(req, res);
-    return;
-  }
-
-  // WhatsApp webhook
-  if (req.method === "GET" && pathname === "/webhooks/whatsapp") {
-    await handleWhatsAppVerification(req, res);
-    return;
-  }
-  if (req.method === "POST" && pathname === "/webhooks/whatsapp") {
-    await handleWhatsAppWebhook(req, res);
-    return;
-  }
-
-  // Debug endpoints
-  if (req.method === "GET" && pathname === "/debug/consent-status") {
-    await handleDebugConsentStatus(req, res);
-    return;
-  }
-  if ((req.method === "POST" || req.method === "GET") && pathname === "/debug/enqueue-summary") {
-    await handleDebugEnqueueSummary(req, res);
-    return;
-  }
-
-  res.statusCode = 404;
-  res.setHeader("Content-Type", "text/plain");
-  res.end("Not Found");
-});
-
-server.listen(port, () => {
-  logger.info(`api listening on http://localhost:${port}`);
-});
-
-// ── Graceful shutdown ─────────────────────────────────────────────────────────
-
-function gracefulShutdown(signal: string): void {
-  logger.info(`${signal} received — shutting down`);
-  server.close(() => {
-    logger.info("server closed");
-    process.exit(0);
+    captureException(error, { requestId: request.id });
+    request.log.error({ err: error }, "unhandled error");
+    reply.code(500).send(Errors.internal());
   });
-  setTimeout(() => {
-    logger.warn("forced shutdown after 10s drain timeout");
-    process.exit(1);
-  }, 10_000);
+
+  app.setNotFoundHandler((request, reply) => {
+    reply.code(404).send(Errors.notFound(`${request.method} ${request.url} not found.`));
+  });
+
+  // ── Health check ───────────────────────────────────────────────────────────
+
+  app.route({
+    method: ["GET", "HEAD"],
+    url: "/health",
+    handler: async (request, reply) => {
+      const checks: Record<string, "ok" | "error"> = { db: "ok", redis: "ok" };
+      try { await prisma.$queryRaw`SELECT 1`; } catch { checks.db = "error"; }
+      try { await getRedis().ping(); } catch { checks.redis = "error"; }
+      const degraded = Object.values(checks).some((v) => v === "error");
+      if (request.method === "HEAD") {
+        reply.code(degraded ? 503 : 200).send();
+        return;
+      }
+      reply.code(degraded ? 503 : 200).send({
+        status: degraded ? "degraded" : "ok",
+        timestamp: new Date().toISOString(),
+        checks,
+      });
+    },
+  });
+
+  // ── REST API ───────────────────────────────────────────────────────────────
+
+  await app.register(restPlugin, { prefix: "/api/v1" });
+
+  // ── WhatsApp webhook ───────────────────────────────────────────────────────
+  // Encapsulated plugin so its content-type parser doesn't affect REST routes.
+
+  await app.register(async (waInstance) => {
+    // Save the raw JSON string before Fastify parses it — the WA handler reads it directly.
+    waInstance.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
+      (_req as unknown as Record<string, unknown>)._rawBodyStr = body;
+      try {
+        done(null, JSON.parse(body as string));
+      } catch {
+        done(null, {});
+      }
+    });
+
+    waInstance.get("/webhooks/whatsapp", async (request, reply) => {
+      await handleWhatsAppVerification(request.raw, reply.raw);
+    });
+
+    waInstance.post("/webhooks/whatsapp", async (request, reply) => {
+      const rawBody = (request.raw as unknown as Record<string, unknown>)._rawBodyStr as string | undefined;
+      await handleWhatsAppWebhook(request.raw, reply.raw, rawBody);
+    });
+
+    waInstance.get("/debug/consent-status", async (request, reply) => {
+      await handleDebugConsentStatus(request.raw, reply.raw);
+    });
+
+    waInstance.route({
+      method: ["GET", "POST"],
+      url: "/debug/enqueue-summary",
+      handler: async (request, reply) => {
+        await handleDebugEnqueueSummary(request.raw, reply.raw);
+      },
+    });
+  });
+
+  // ── Start ──────────────────────────────────────────────────────────────────
+
+  await app.listen({ port: PORT, host: "0.0.0.0" });
+
+  // ── Graceful shutdown ──────────────────────────────────────────────────────
+
+  const shutdown = async (signal: string): Promise<void> => {
+    pinoInstance.info(`${signal} received — shutting down`);
+    const timer = setTimeout(() => {
+      pinoInstance.warn("forced shutdown after 10s drain timeout");
+      process.exit(1);
+    }, 10_000);
+    timer.unref();
+    try {
+      await app.close();
+      pinoInstance.info("server closed");
+      process.exit(0);
+    } catch {
+      pinoInstance.warn("error during shutdown");
+      process.exit(1);
+    }
+  };
+
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+main().catch((err) => {
+  pinoInstance.error({ err }, "failed to start server");
+  process.exit(1);
+});

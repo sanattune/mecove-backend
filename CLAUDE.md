@@ -14,7 +14,7 @@ meCove is a journaling backend with two channels: WhatsApp (via Meta webhook) an
 - **Queue:** BullMQ on Redis 7+ (via ioredis)
 - **LLM providers:** OpenAI, Groq, Sarvam (configured in `src/llm/llm.yaml`)
 - **PDF generation:** Puppeteer (system Chromium in Docker, local Chrome otherwise)
-- **HTTP server:** Native Node.js `http` module (no Express/Fastify)
+- **HTTP server:** Fastify v5 (`@fastify/cors`, `@fastify/swagger`, `@fastify/swagger-ui`) for REST API; WhatsApp webhook routes use encapsulated Fastify plugin with raw body capture
 - **WhatsApp:** Meta Graph API v19.0
 - **Mobile auth:** OTP via AWS SNS, JWT (access 1hr + refresh 30d)
 - **Logging:** pino (structured JSON), Sentry for error monitoring
@@ -54,8 +54,10 @@ No test framework is currently configured.
 
 **API structure (`src/api/`):**
 - `webhook/whatsappHandler.ts` — all WhatsApp webhook logic (verification, message ingestion, button gates)
-- `rest/router.ts` — REST dispatcher for `/api/v1/*`; see `src/api/CLAUDE.md` for endpoint details
-- `common/` — shared utilities: `sendJSON`, `httpHelpers`, `errors`, `mask`
+- `rest/router.ts` — Fastify plugin registered at `/api/v1`; route declarations with inline OpenAPI schemas and `onRequest` auth hooks; see `src/api/CLAUDE.md` for endpoint details
+- `rest/handlers/` — one handler file per domain; pure `async (request, reply)` Fastify handlers
+- `rest/middleware/auth.ts` — `authenticate` Fastify preHandler + JWT signing/verification utilities
+- `common/` — shared utilities: `sendJSON`, `httpHelpers`, `errors`, `mask` (still used by WA webhook handler)
 
 **Message flow:**
 1. WhatsApp message arrives at `POST /webhooks/whatsapp`

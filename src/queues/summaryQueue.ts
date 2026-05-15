@@ -10,6 +10,8 @@ export type GenerateSummaryPayload = {
   channelUserKey: string;
   range: "last_7_days" | "last_15_days" | "last_30_days";
   reportType: ReportType;
+  channel: "app" | "whatsapp";
+  summaryId?: string;
 };
 
 export const summaryQueue = new Queue(SUMMARY_QUEUE_NAME, {
