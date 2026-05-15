@@ -150,4 +150,21 @@ Redirect is a **pre-filter**: after classification, before LLM reply generation.
 
 ### App REST endpoints
 
-See `src/api/CLAUDE.md` for existing and planned endpoint list.
+All implemented under `/api/v1`. Swagger UI at `/api/docs`.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/auth/request-otp` | — | Send OTP via SMS |
+| POST | `/auth/verify` | — | Verify OTP, return token pair |
+| POST | `/auth/refresh` | — | Refresh access token |
+| POST | `/auth/logout` | Bearer | Revoke refresh token |
+| GET | `/messages` | Bearer | Paginated chat history |
+| POST | `/messages/send` | Bearer | Send message, get AI reply synchronously |
+| POST | `/summary/generate` | Bearer | Enqueue report, returns `summaryId` |
+| GET | `/summary/:id` | Bearer | Poll report status |
+| GET | `/summary/:id/pdf` | Bearer | Download PDF bytes |
+| GET | `/checkin` | Bearer | Active reminder state |
+| POST | `/checkin/setup` | Bearer | Set or disable daily reminder |
+| GET | `/stats` | Bearer | messageCount, memberSince, lastReport |
+| DELETE | `/account/data` | Bearer | Wipe all messages + reports |
+| GET | `/privacy` | Bearer | Consent message and link |

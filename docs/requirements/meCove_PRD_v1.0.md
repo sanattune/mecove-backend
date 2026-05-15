@@ -96,10 +96,10 @@ The first target users are people already familiar with the WhatsApp-based meCov
 - Social or community features
 - Push notifications
 - Coach-facing app
-- In-app report generation UI unless explicitly prioritized after chat is stable
+- In-app report generation, check-in, and account management UI (backend APIs are complete; mobile UI implementation is out of scope for initial chat-focused MVP)
 - Full habit tracker, goal tracker, and idea capture experiences
 
-> Note: Some backend report-generation capability already exists, but the MVP mobile requirement remains focused on authentication, chat, history, and reliable native app integration.
+> Note: Backend APIs for reports, check-in, account stats, data deletion, and privacy are fully implemented. Mobile UI for these features is deferred to the next phase; chat, auth, and history are the MVP focus.
 
 ---
 
@@ -122,7 +122,7 @@ The first target users are people already familiar with the WhatsApp-based meCov
 |---|---|
 | Runtime | Node.js 20+ |
 | Language | TypeScript |
-| HTTP server | Native Node.js HTTP server |
+| HTTP server | Fastify v5 (`@fastify/cors`, `@fastify/swagger`, `@fastify/swagger-ui`) |
 | API base path | `/api/v1` for mobile REST APIs |
 | Database | PostgreSQL via Prisma |
 | Cache / queue | Redis, BullMQ |
@@ -198,13 +198,15 @@ The backend now exposes a mobile REST API under `/api/v1`, while keeping WhatsAp
 ### 6.1 Current Backend State
 
 - Backend hosted on AWS-compatible infrastructure.
-- API server listens on port `3000` in the current implementation.
+- API server listens on port `3000` in the current implementation using Fastify v5.
 - `/health` performs a deep DB and Redis health check.
 - Mobile REST API is available under `/api/v1`.
 - WhatsApp webhook endpoints remain available under `/webhooks/whatsapp`.
 - Messages are stored in PostgreSQL and encrypted per user.
 - Message replies are generated synchronously for the mobile app using the existing acknowledgement reply pipeline.
-- Summary/report generation infrastructure exists separately through worker jobs and report modules.
+- Summary/report generation is fully implemented: app triggers generation via REST, PDF is stored on the DB, polled by app, and downloaded in one request.
+- Check-in reminders, account stats, data deletion, and privacy endpoints are implemented.
+- Interactive API docs (Swagger UI) are served at `/api/docs`.
 
 ### 6.2 Implemented Mobile API Endpoints
 
@@ -301,6 +303,94 @@ The backend now exposes a mobile REST API under `/api/v1`, while keeping WhatsAp
 | Error Cases | `REPLY_TIMEOUT`, `UNAUTHORIZED`, `VALIDATION_ERROR`, `RATE_LIMITED`, `INTERNAL_ERROR` |
 | Notes | The mobile app waits for the assistant reply in the same HTTP response. Streaming/WebSockets are not part of MVP. |
 
+#### 6.2.8 Generate Report
+
+| | |
+|---|---|
+| Method | `POST` |
+| Endpoint | `/api/v1/summary/generate` |
+| Purpose | Enqueue a report generation job |
+| Auth | Bearer access token required |
+| Request Body | `{ "type": "sessionbridge" \| "myself_lately", "range": "last_7_days" \| "last_15_days" \| "last_30_days" }` |
+| Success Response | `{ "summaryId": string, "status": "queued" }` — HTTP 202 |
+| Error Cases | `CONFLICT` if a report is already in progress, `UNAUTHORIZED`, `VALIDATION_ERROR` |
+| Notes | One report per user at a time (15-minute lock). Poll with `GET /summary/:id` for status. |
+
+#### 6.2.9 Get Report Status
+
+| | |
+|---|---|
+| Method | `GET` |
+| Endpoint | `/api/v1/summary/:summaryId` |
+| Purpose | Poll report progress |
+| Auth | Bearer access token required |
+| Success Response | `{ "id": string, "status": "queued" \| "processing" \| "success" \| "success_fallback" \| "failed", "reportType": string, "rangeStart": string, "rangeEnd": string, "createdAt": string }` |
+| Notes | Poll until status is `success` or `success_fallback`, then download PDF. |
+
+#### 6.2.10 Download Report PDF
+
+| | |
+|---|---|
+| Method | `GET` |
+| Endpoint | `/api/v1/summary/:summaryId/pdf` |
+| Purpose | Download generated PDF bytes |
+| Auth | Bearer access token required |
+| Success Response | Binary PDF, `Content-Type: application/pdf`, `Content-Disposition: attachment; filename="<type>-<date>.pdf"` |
+| Error Cases | `NOT_FOUND` if report is not ready or not found |
+
+#### 6.2.11 Get Check-in Reminder
+
+| | |
+|---|---|
+| Method | `GET` |
+| Endpoint | `/api/v1/checkin` |
+| Purpose | Get active daily reminder state |
+| Auth | Bearer access token required |
+| Success Response | `{ "active": true, "time": "06:00" \| "16:00" \| "21:00", "label": string }` or `{ "active": false, "time": null, "label": null }` |
+
+#### 6.2.12 Set Check-in Reminder
+
+| | |
+|---|---|
+| Method | `POST` |
+| Endpoint | `/api/v1/checkin/setup` |
+| Purpose | Set or disable daily reminder |
+| Auth | Bearer access token required |
+| Request Body | `{ "time": "06:00" \| "16:00" \| "21:00" \| "off" }` |
+| Success Response | `{ "active": boolean, "time": string \| null, "label": string \| null }` |
+| Notes | `"off"` disables the reminder. Enabled reminders fire daily at the chosen time (Asia/Kolkata). |
+
+#### 6.2.13 Get User Stats
+
+| | |
+|---|---|
+| Method | `GET` |
+| Endpoint | `/api/v1/stats` |
+| Purpose | Summary stats for the user profile screen |
+| Auth | Bearer access token required |
+| Success Response | `{ "messageCount": number, "memberSince": string \| null, "lastReport": { "type": string, "createdAt": string } \| null }` |
+
+#### 6.2.14 Delete Account Data
+
+| | |
+|---|---|
+| Method | `DELETE` |
+| Endpoint | `/api/v1/account/data` |
+| Purpose | Permanently delete all messages, reports, and associated Redis state for the user |
+| Auth | Bearer access token required |
+| Success Response | `{ "success": true }` |
+| Notes | **Irreversible.** Does not delete the user account or revoke tokens — only messages and reports. |
+
+#### 6.2.15 Get Privacy Notice
+
+| | |
+|---|---|
+| Method | `GET` |
+| Endpoint | `/api/v1/privacy` |
+| Purpose | Return the consent/privacy message for the privacy screen |
+| Auth | Bearer access token required |
+| Success Response | `{ "message": string, "link": string \| null }` |
+
 ### 6.3 Existing Non-Mobile Endpoints
 
 | Method | Endpoint | Purpose |
@@ -387,6 +477,7 @@ Android and iOS can proceed in parallel once the API contract is frozen.
 
 - Backend build must pass with `pnpm build`.
 - Backend health check must pass against staging before app integration.
+- Interactive API docs are available at `GET /api/docs` for manual endpoint testing during development.
 - Test OTP flow in a non-production-safe way before using real SMS.
 - Test access-token expiry and refresh-token recovery.
 - Test logout revocation and local token deletion.
@@ -417,8 +508,10 @@ Android and iOS can proceed in parallel once the API contract is frozen.
 | Feature | Phase | Notes |
 |---|---|---|
 | Push notifications | Phase 2 | Reminders, check-ins, coach messages |
-| SessionBridge report UI | Phase 3 | On-demand compiled reflection report |
-| Myself Lately report UI | Phase 3 | User-facing reflective report |
+| SessionBridge report UI | Phase 2 | Backend API complete. Mobile: Reports tab with type + range pickers, PDF download, status polling |
+| Myself Lately report UI | Phase 2 | Backend API complete. Mobile: same Reports tab, second report type |
+| Check-in UI | Phase 2 | Backend API complete. Mobile: Settings screen time picker + on/off toggle |
+| Account management UI | Phase 2 | Backend API complete. Mobile: stats screen, data deletion, privacy notice |
 | Habit tracker | Phase 3 | Track behaviors, streaks, check-ins |
 | Goal tracker | Phase 3 | User-defined goals with progress visibility |
 | Idea capture | Phase 3 | Quick-entry idea notes linked to profile |
