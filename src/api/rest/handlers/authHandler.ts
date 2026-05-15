@@ -36,6 +36,49 @@ function hashToken(token: string): string {
 
 import { readBody } from "../../common/httpHelpers";
 
+/**
+ * @openapi
+ * /auth/request-otp:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Request OTP
+ *     description: Sends a 6-digit OTP via SMS. Rate limited to 3 requests per 15 minutes per phone number.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [phoneNumber]
+ *             properties:
+ *               phoneNumber:
+ *                 type: string
+ *                 description: E.164 format
+ *                 example: "+919876543210"
+ *     responses:
+ *       200:
+ *         description: OTP sent
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Rate limited
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export async function handleRequestOtp(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -68,6 +111,58 @@ export async function handleRequestOtp(
   }
 }
 
+/**
+ * @openapi
+ * /auth/verify:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Verify OTP and sign in
+ *     description: Verifies the OTP and returns a JWT access token and refresh token. Creates the user if this is their first sign-in.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [phoneNumber, otp]
+ *             properties:
+ *               phoneNumber:
+ *                 type: string
+ *                 example: "+919876543210"
+ *               otp:
+ *                 type: string
+ *                 minLength: 6
+ *                 maxLength: 6
+ *                 example: "123456"
+ *     responses:
+ *       200:
+ *         description: Authenticated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken:
+ *                   type: string
+ *                   description: JWT, expires in 1 hour
+ *                 refreshToken:
+ *                   type: string
+ *                   description: JWT, expires in 30 days
+ *                 userId:
+ *                   type: string
+ *       401:
+ *         description: Invalid or expired OTP
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Rate limited
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export async function handleVerifyOtp(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -148,6 +243,40 @@ export async function handleVerifyOtp(
   }
 }
 
+/**
+ * @openapi
+ * /auth/refresh:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Refresh access token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: New access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken:
+ *                   type: string
+ *                   description: JWT, expires in 1 hour
+ *       401:
+ *         description: Invalid, expired, or revoked refresh token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export async function handleRefreshToken(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -187,6 +316,42 @@ export async function handleRefreshToken(
   }
 }
 
+/**
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Logout and revoke refresh token
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Logged out
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export async function handleLogout(
   req: http.IncomingMessage,
   res: http.ServerResponse,

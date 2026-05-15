@@ -111,3 +111,43 @@ When fewer than 4 days are logged in the window, all inferred sections (themes, 
 - "patterns" was used both as a Myself, Lately section name and as a generic pipeline term — resolved: the user-facing section is now **What Has Been Coming Up**, the field name remains `patterns` internally for code continuity, but new prose in this repo should prefer the section name.
 - "vocabulary" used to mean both the old SessionBridge section and the broader notion of emotion words across reports — resolved: section is now **Words Used in Context**; field is `wordsInContext`. The general notion is just "emotion words" or "explicit emotions" (canonical key).
 - "flagging" carried clinical connotation in older language — resolved: replaced with **Signals Worth Attention** (counsellor-facing, repetition-based) and **Something to Notice** (user-facing, reflective).
+
+## App interaction model
+
+### Channel separation
+
+**WhatsApp channel**: conversational UI only. All user actions (report generation, check-in setup, consent, data deletion) driven through chat — slash commands and button prompts simulate native UI.
+
+**App channel**: native UI handles all structured actions. Chat is purely for journaling and informational queries (guide, greeting). No slash commands, no server-driven button prompts.
+
+### App chat contract
+
+`POST /api/v1/messages/send` always returns:
+```json
+{ "userMessage": {...}, "assistantMessage": { "content": "..." } }
+```
+Consistent shape always. No `actionPrompt`. No button metadata.
+
+### Intent routing by channel
+
+Classifier detects intent channel-agnostically. Action layer is channel-aware:
+
+| Classifier intent | WhatsApp | App |
+|---|---|---|
+| `summary_request` | Two-step button prompt (type → range) | Redirect: "Use the Reports tab" |
+| `setup_checkin` | Button prompt (time picker) | Redirect: "Set this in Settings" |
+| `guide_query` / `greeting` / `journal_entry` | LLM reply | LLM reply (same) |
+
+Redirect is a **pre-filter**: after classification, before LLM reply generation. No LLM cost. `generateAckDecision` receives `channel` in options.
+
+### App UI owns structured actions
+
+- **Consent** — signup flow, before chat is accessible
+- **Report generation** — Reports tab (type + range pickers)
+- **Check-in setup** — Settings screen (time picker, on/off)
+- **Data deletion, stats, privacy** — Settings screen
+- **Admin commands** — WhatsApp-only; not exposed in app
+
+### App REST endpoints
+
+See `src/api/CLAUDE.md` for existing and planned endpoint list.

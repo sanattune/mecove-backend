@@ -59,6 +59,50 @@ function toMessageItems(
   return items;
 }
 
+/**
+ * @openapi
+ * /messages:
+ *   get:
+ *     tags: [Messages]
+ *     summary: Get message history
+ *     description: Returns paginated chat history (user + assistant messages) across all channels, newest first. Excludes command replies and test feedback.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: before
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Cursor — return messages older than this ISO timestamp
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 50
+ *     responses:
+ *       200:
+ *         description: Message list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 messages:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/MessageItem'
+ *                 hasMore:
+ *                   type: boolean
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export async function handleGetMessages(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -100,6 +144,58 @@ export async function handleGetMessages(
   }
 }
 
+/**
+ * @openapi
+ * /messages/send:
+ *   post:
+ *     tags: [Messages]
+ *     summary: Send a message and get AI reply
+ *     description: Stores the user message, runs the AI reply pipeline synchronously, and returns both messages. Times out after 30 seconds. Rate limited to 20 requests per minute.
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 10000
+ *     responses:
+ *       200:
+ *         description: Message sent and reply generated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 userMessage:
+ *                   $ref: '#/components/schemas/MessageItem'
+ *                 assistantMessage:
+ *                   $ref: '#/components/schemas/MessageItem'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Rate limited
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       503:
+ *         description: AI reply timed out
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export async function handleSendMessage(
   req: http.IncomingMessage,
   res: http.ServerResponse,

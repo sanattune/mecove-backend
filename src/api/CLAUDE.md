@@ -52,6 +52,17 @@ Base path: `/api/v1/`
 
 **Message send flow:** Store message with `channel="app"` Identity → call `generateAckDecision()` directly (no queue) → store reply → return both in response. App waits for reply in the same HTTP response.
 
+### Planned endpoints (in scope, not yet implemented)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/summary/generate` | Generate report (type + range in body) |
+| GET | `/api/v1/checkin` | Current reminder status |
+| POST | `/api/v1/checkin/setup` | Set/update/turn off reminder |
+| GET | `/api/v1/stats` | User stats (message count, join date, last report) |
+| DELETE | `/api/v1/account/data` | Clear all messages and summaries |
+| GET | `/api/v1/privacy` | Privacy notice text |
+
 **Encryption:** Messages encrypted/decrypted with user's DEK via `getOrCreateUserDek()`. History endpoint decrypts before returning. `decryptText()` is safe on non-encrypted strings.
 
 ### Middleware

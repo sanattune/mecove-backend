@@ -1,5 +1,8 @@
 import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
 import http from "node:http";
+import { parse as parseYaml } from "yaml";
 import { initSentry } from "../infra/sentry";
 import { getKek } from "../infra/encryption";
 import { prisma } from "../infra/prisma";
@@ -12,6 +15,33 @@ import {
   handleDebugConsentStatus,
   handleDebugEnqueueSummary,
 } from "./webhook/whatsappHandler";
+
+const OPENAPI_SPEC_PATH = path.resolve("openapi.yaml");
+
+function loadOpenapiSpec(): object | null {
+  try {
+    return parseYaml(fs.readFileSync(OPENAPI_SPEC_PATH, "utf8")) as object;
+  } catch {
+    return null;
+  }
+}
+
+const SWAGGER_UI_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>meCove API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({ url: '/api/docs/spec', dom_id: '#swagger-ui', deepLinking: true,
+      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset] });
+  </script>
+</body>
+</html>`;
 
 // ── Startup validation ────────────────────────────────────────────────────────
 
@@ -71,6 +101,27 @@ const server = http.createServer(async (req, res) => {
   }
 
   const pathname = req.url?.split("?")[0];
+
+  // API docs
+  if (req.method === "GET" && pathname === "/api/docs/spec") {
+    const spec = loadOpenapiSpec();
+    if (!spec) {
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "text/plain");
+      res.end("openapi.yaml not found — run: pnpm generate:openapi");
+      return;
+    }
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(spec));
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/docs") {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/html");
+    res.end(SWAGGER_UI_HTML);
+    return;
+  }
 
   // REST API
   if (pathname?.startsWith("/api/v1")) {
