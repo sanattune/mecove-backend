@@ -47,6 +47,11 @@ async function main(): Promise<void> {
   const app = Fastify({
     loggerInstance: pinoInstance,
     genReqId: () => crypto.randomUUID(),
+    ajv: {
+      customOptions: {
+        strict: false, // allow OpenAPI keywords (example, nullable, etc.) in schemas
+      },
+    },
   });
 
   // ── Plugins ─────────────────────────────────────────────────────────────────
@@ -137,8 +142,9 @@ async function main(): Promise<void> {
 
   await app.register(async (waInstance) => {
     // Save the raw JSON string before Fastify parses it — the WA handler reads it directly.
-    waInstance.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
-      (_req as unknown as Record<string, unknown>)._rawBodyStr = body;
+    waInstance.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+      // req here is FastifyRequest — store raw string so the WA handler can read it
+      (req as unknown as Record<string, unknown>)._rawBodyStr = body;
       try {
         done(null, JSON.parse(body as string));
       } catch {
@@ -147,15 +153,18 @@ async function main(): Promise<void> {
     });
 
     waInstance.get("/webhooks/whatsapp", async (request, reply) => {
+      reply.hijack();
       await handleWhatsAppVerification(request.raw, reply.raw);
     });
 
     waInstance.post("/webhooks/whatsapp", async (request, reply) => {
-      const rawBody = (request.raw as unknown as Record<string, unknown>)._rawBodyStr as string | undefined;
+      reply.hijack();
+      const rawBody = (request as unknown as Record<string, unknown>)._rawBodyStr as string | undefined;
       await handleWhatsAppWebhook(request.raw, reply.raw, rawBody);
     });
 
     waInstance.get("/debug/consent-status", async (request, reply) => {
+      reply.hijack();
       await handleDebugConsentStatus(request.raw, reply.raw);
     });
 
@@ -163,6 +172,7 @@ async function main(): Promise<void> {
       method: ["GET", "POST"],
       url: "/debug/enqueue-summary",
       handler: async (request, reply) => {
+        reply.hijack();
         await handleDebugEnqueueSummary(request.raw, reply.raw);
       },
     });

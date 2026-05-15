@@ -21,7 +21,10 @@
       "Bash(gh pr create --base main --head myself-lately-report --title 'Add Myself-Lately mirror report, redesign SessionBridge as therapist brief' --body ' *)",
       "Bash(gh --version)",
       "Bash(gh auth *)",
-      "PowerShell(gh *)"
+      "PowerShell(gh *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm generate:openapi)",
+      "Bash(pnpm tsc *)"
     ]
   }
 }
