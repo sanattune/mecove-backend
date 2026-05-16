@@ -16,3 +16,10 @@ export function getRedis(): Redis {
   }
   return connection;
 }
+
+export async function closeRedis(): Promise<void> {
+  if (!connection) return;
+  const redis = connection;
+  connection = null;
+  await redis.quit();
+}

@@ -20,30 +20,31 @@ import {
 
 // ── Startup validation ────────────────────────────────────────────────────────
 
-if (!process.env.REDIS_URL?.trim()) {
-  throw new Error("REDIS_URL is required. Set it in .env");
-}
-getKek(); // validates ENCRYPTION_MASTER_KEY at startup
-const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
-const hasDatabaseParts = Boolean(
-  process.env.DB_HOST?.trim() &&
-    process.env.DB_NAME?.trim() &&
-    process.env.DB_USER?.trim() &&
-    process.env.DB_PASSWORD?.trim()
-);
-if (!hasDatabaseUrl && !hasDatabaseParts) {
-  throw new Error(
-    "DATABASE_URL (or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD) is required. Set it in the environment."
+function validateStartupEnv(): void {
+  if (!process.env.REDIS_URL?.trim()) {
+    throw new Error("REDIS_URL is required. Set it in .env");
+  }
+  getKek(); // validates ENCRYPTION_MASTER_KEY at startup
+  const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
+  const hasDatabaseParts = Boolean(
+    process.env.DB_HOST?.trim() &&
+      process.env.DB_NAME?.trim() &&
+      process.env.DB_USER?.trim() &&
+      process.env.DB_PASSWORD?.trim()
   );
+  if (!hasDatabaseUrl && !hasDatabaseParts) {
+    throw new Error(
+      "DATABASE_URL (or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD) is required. Set it in the environment."
+    );
+  }
 }
-initSentry();
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 const CORS_ORIGINS = process.env.CORS_ALLOWED_ORIGINS?.trim() || "*";
 const PORT = 3000;
 
-async function main(): Promise<void> {
+export async function buildApp() {
   const app = Fastify({
     loggerInstance: pinoInstance,
     genReqId: () => crypto.randomUUID(),
@@ -180,6 +181,15 @@ async function main(): Promise<void> {
 
   // ── Start ──────────────────────────────────────────────────────────────────
 
+  return app;
+}
+
+async function main(): Promise<void> {
+  validateStartupEnv();
+  initSentry();
+
+  const app = await buildApp();
+
   await app.listen({ port: PORT, host: "0.0.0.0" });
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
@@ -205,7 +215,9 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
-main().catch((err) => {
-  pinoInstance.error({ err }, "failed to start server");
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    pinoInstance.error({ err }, "failed to start server");
+    process.exit(1);
+  });
+}
