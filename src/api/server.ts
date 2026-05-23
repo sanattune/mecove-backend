@@ -9,6 +9,7 @@ import { getKek } from "../infra/encryption";
 import { prisma } from "../infra/prisma";
 import { getRedis } from "../infra/redis";
 import { pinoInstance } from "../infra/logger";
+import { startupDebug, startupDebugTime, startupDebugTimeAsync } from "../infra/startupDebug";
 import { Errors } from "./common/errors";
 import { restPlugin } from "./rest/router";
 import {
@@ -43,8 +44,10 @@ function validateStartupEnv(): void {
 
 const CORS_ORIGINS = process.env.CORS_ALLOWED_ORIGINS?.trim() || "*";
 const PORT = 3000;
+startupDebug("server:module-loaded");
 
 export async function buildApp() {
+  startupDebug("server:build-app:start");
   const app = Fastify({
     loggerInstance: pinoInstance,
     genReqId: () => crypto.randomUUID(),
@@ -57,14 +60,14 @@ export async function buildApp() {
 
   // ── Plugins ─────────────────────────────────────────────────────────────────
 
-  await app.register(cors, {
+  await startupDebugTimeAsync("fastify:register:cors", () => app.register(cors, {
     origin: CORS_ORIGINS,
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["X-Request-Id"],
-  });
+  }));
 
-  await app.register(swagger, {
+  await startupDebugTimeAsync("fastify:register:swagger", () => app.register(swagger, {
     openapi: {
       openapi: "3.0.3",
       info: { title: "meCove API", version: "1.0.0", description: "meCove mobile app REST API" },
@@ -82,23 +85,23 @@ export async function buildApp() {
         { name: "Account", description: "User stats, data deletion, privacy" },
       ],
     },
-  });
+  }));
 
-  await app.register(swaggerUi, {
+  await startupDebugTimeAsync("fastify:register:swagger-ui", () => app.register(swaggerUi, {
     routePrefix: "/api/docs",
     uiConfig: { deepLinking: true },
-  });
+  }));
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
 
-  app.addHook("onRequest", (_request, reply, done) => {
+  startupDebugTime("fastify:add:on-request-hook", () => app.addHook("onRequest", (_request, reply, done) => {
     reply.header("X-Request-Id", _request.id);
     done();
-  });
+  }));
 
   // ── Error handlers ─────────────────────────────────────────────────────────
 
-  app.setErrorHandler((error: FastifyError, request, reply) => {
+  startupDebugTime("fastify:set:error-handler", () => app.setErrorHandler((error: FastifyError, request, reply) => {
     if (error.validation) {
       reply.code(400).send(Errors.validation(error.message));
       return;
@@ -106,15 +109,15 @@ export async function buildApp() {
     captureException(error, { requestId: request.id });
     request.log.error({ err: error }, "unhandled error");
     reply.code(500).send(Errors.internal());
-  });
+  }));
 
-  app.setNotFoundHandler((request, reply) => {
+  startupDebugTime("fastify:set:not-found-handler", () => app.setNotFoundHandler((request, reply) => {
     reply.code(404).send(Errors.notFound(`${request.method} ${request.url} not found.`));
-  });
+  }));
 
   // ── Health check ───────────────────────────────────────────────────────────
 
-  app.route({
+  startupDebugTime("fastify:route:health", () => app.route({
     method: ["GET", "HEAD"],
     url: "/health",
     handler: async (request, reply) => {
@@ -132,16 +135,16 @@ export async function buildApp() {
         checks,
       });
     },
-  });
+  }));
 
   // ── REST API ───────────────────────────────────────────────────────────────
 
-  await app.register(restPlugin, { prefix: "/api/v1" });
+  await startupDebugTimeAsync("fastify:register:rest", () => app.register(restPlugin, { prefix: "/api/v1" }));
 
   // ── WhatsApp webhook ───────────────────────────────────────────────────────
   // Encapsulated plugin so its content-type parser doesn't affect REST routes.
 
-  await app.register(async (waInstance) => {
+  await startupDebugTimeAsync("fastify:register:whatsapp", () => app.register(async (waInstance) => {
     // Save the raw JSON string before Fastify parses it — the WA handler reads it directly.
     waInstance.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
       // req here is FastifyRequest — store raw string so the WA handler can read it
@@ -177,20 +180,23 @@ export async function buildApp() {
         await handleDebugEnqueueSummary(request.raw, reply.raw);
       },
     });
-  });
+  }));
 
   // ── Start ──────────────────────────────────────────────────────────────────
 
+  startupDebug("server:build-app:done");
   return app;
 }
 
 async function main(): Promise<void> {
-  validateStartupEnv();
-  initSentry();
+  startupDebug("server:main:start");
+  startupDebugTime("server:validate-env", validateStartupEnv);
+  startupDebugTime("server:init-sentry", initSentry);
 
-  const app = await buildApp();
+  const app = await startupDebugTimeAsync("server:build-app", buildApp);
 
-  await app.listen({ port: PORT, host: "0.0.0.0" });
+  await startupDebugTimeAsync("server:listen", () => app.listen({ port: PORT, host: "0.0.0.0" }));
+  startupDebug("server:main:ready", { port: PORT });
 
   // ── Graceful shutdown ──────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 import Redis from "ioredis";
+import { startupDebug, startupDebugTime } from "./startupDebug";
 
 let connection: Redis | null = null;
 
@@ -12,7 +13,8 @@ export function getRedis(): Redis {
     throw new Error("REDIS_URL is required. Set it in .env");
   }
   if (!connection) {
-    connection = new Redis(url, { maxRetriesPerRequest: null });
+    connection = startupDebugTime("redis:create-client", () => new Redis(url, { maxRetriesPerRequest: null }));
+    startupDebug("redis:client-created");
   }
   return connection;
 }

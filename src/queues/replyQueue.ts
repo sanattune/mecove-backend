@@ -1,5 +1,6 @@
 import { Queue } from "bullmq";
 import { getRedis } from "../infra/redis";
+import { startupDebugTime } from "../infra/startupDebug";
 
 export const REPLY_QUEUE_NAME = "reply";
 export const JOB_NAME_GENERATE_REPLY = "generateReply";
@@ -14,14 +15,17 @@ export type GenerateReplyPayload = {
   mode: ReplyJobMode;
 };
 
-export const replyQueue = new Queue(REPLY_QUEUE_NAME, {
-  connection: getRedis(),
-  defaultJobOptions: {
-    removeOnComplete: { count: 1000 },
-    attempts: 3,
-    backoff: {
-      type: "exponential",
-      delay: 2000,
+export const replyQueue = startupDebugTime(
+  "queue:reply:create",
+  () => new Queue(REPLY_QUEUE_NAME, {
+    connection: getRedis(),
+    defaultJobOptions: {
+      removeOnComplete: { count: 1000 },
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 2000,
+      },
     },
-  },
-});
+  })
+);

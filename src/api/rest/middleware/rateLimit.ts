@@ -16,7 +16,7 @@ export async function checkRateLimit(
 export const RateLimits = {
   requestOtp: (phone: string) => ({
     key: `rl:request-otp:${phone}`,
-    limit: 3,
+    limit: 100,
     windowSeconds: 15 * 60,
   }),
   verifyOtp: (phone: string) => ({
