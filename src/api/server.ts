@@ -106,6 +106,10 @@ export async function buildApp() {
       reply.code(400).send(Errors.validation(error.message));
       return;
     }
+    if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+      reply.code(error.statusCode).send(Errors.validation(error.message));
+      return;
+    }
     captureException(error, { requestId: request.id });
     request.log.error({ err: error }, "unhandled error");
     reply.code(500).send(Errors.internal());
