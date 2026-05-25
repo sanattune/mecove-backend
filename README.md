@@ -164,6 +164,9 @@ pnpm prisma migrate dev
 | `pnpm start:worker` | Start worker (production mode) |
 | `pnpm db:smoke` | Run database smoke test (creates test data) |
 | `pnpm sync:webhook` | Sync WhatsApp webhook with Meta/Facebook (requires ngrok) |
+| `pnpm auth:jwt <phone>` | Generate a 1-hour access JWT for an existing user phone |
+| `pnpm openapi:generate` | Generate `docs/openapi.yaml` for Postman/imports |
+| `pnpm docs:generate` | Alias for `pnpm openapi:generate` |
 | `pnpm prisma format` | Format Prisma schema |
 | `pnpm prisma migrate dev` | Create and apply migration |
 | `pnpm prisma migrate deploy` | Apply pending migrations |

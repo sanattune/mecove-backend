@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { startupDebug, startupDebugTime } from "./startupDebug";
 
 function getRequiredEnv(key: string): string {
   const value = process.env[key]?.trim();
@@ -76,5 +77,6 @@ function buildPgPoolConfig(connectionString: string): {
     : { connectionString };
 }
 
-const adapter = new PrismaPg(buildPgPoolConfig(url));
-export const prisma = new PrismaClient({ adapter });
+startupDebug("prisma:config-ready", { hasDatabaseUrl: Boolean(process.env.DATABASE_URL?.trim()) });
+const adapter = startupDebugTime("prisma:create-adapter", () => new PrismaPg(buildPgPoolConfig(url)));
+export const prisma = startupDebugTime("prisma:create-client", () => new PrismaClient({ adapter }));
