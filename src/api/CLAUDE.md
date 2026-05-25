@@ -35,6 +35,8 @@ Implemented as a Fastify plugin (`restPlugin` in `router.ts`). Base path: `/api/
 
 Routes are declared in `router.ts` with inline JSON Schema (`schema:`) for OpenAPI docs, and `onRequest: [authenticate]` for protected routes. Handlers are pure `async (request, reply)` functions in `handlers/`.
 
+`restPlugin` registers a custom JSON content-type parser that accepts empty bodies (returns `{}`). This handles Android clients that send `Content-Type: application/json` on no-payload POSTs. The WA webhook plugin has its own encapsulated override and is unaffected.
+
 Auth: `authenticate` in `rest/middleware/auth.ts` is a Fastify `onRequest` hook — verifies Bearer JWT, sets `request.userId`. Rate limiting is done inside handlers (uses `checkRateLimit` from `middleware/rateLimit.ts`).
 
 Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Request-Id` header via `onRequest` hook. Handlers use `childLogger({ requestId: request.id })` for structured logging.
@@ -51,6 +53,8 @@ Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Requ
 **Auth flow:** OTP stored in Redis (`otp:v1:{phone}`, 10min TTL). On verify, OTP consumed atomically. New users auto-created with `role="user"`, `approvedAt=now()`. WhatsApp allowlist does NOT apply to app sign-ups.
 
 **Tokens:** Access JWT (1hr), refresh JWT (30d). Refresh tokens stored as SHA-256 hashes in `RefreshToken` table. `JWT_SECRET` env var required.
+
+**`/auth/verify` response includes `privacyAccepted: boolean`** — `true` if user's `privacyAcceptedVersion` matches `consentConfig.mvp.version`. App uses this to gate Chat at login time.
 
 ### Message endpoints
 
@@ -82,7 +86,10 @@ Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Requ
 |---|---|---|
 | GET | `/stats` | Returns `{messageCount, memberSince, lastReport: {type, createdAt} \| null}`. |
 | DELETE | `/account/data` | Permanently deletes all messages and summaries for the user. |
-| GET | `/privacy` | Returns `{message, link}` from consent config. |
+| GET | `/privacy` | Returns `{message, link, privacyAccepted}`. Does DB fetch — `privacyAccepted` is version-checked against `consentConfig.mvp.version`. App calls this on every open when user is already logged in. |
+| POST | `/privacy/accept` | Records consent: sets `privacyAcceptedAt` (now) + `privacyAcceptedVersion` (from consent config) on user. Idempotent. Returns `{success: true}`. |
+
+**Privacy gate:** `privacyAccepted` is a version check (`user.privacyAcceptedVersion === consentConfig.mvp.version`), not just non-null. Bumping `mvp.version` in `consent.config.yaml` forces re-acceptance for all users.
 
 **Encryption:** Messages encrypted/decrypted with user's DEK via `getOrCreateUserDek()`. History endpoint decrypts before returning. `decryptText()` is safe on non-encrypted strings.
 
