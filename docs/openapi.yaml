@@ -110,6 +110,9 @@ paths:
                     description: JWT, expires in 30 days
                   userId:
                     type: string
+                  privacyAccepted:
+                    type: boolean
+                    description: Whether the user has accepted the privacy notice
         "401":
           description: Default Response
           content:
@@ -733,6 +736,39 @@ paths:
                   link:
                     type: string
                     nullable: true
+                  privacyAccepted:
+                    type: boolean
+                    description: True if user accepted the current policy version
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /privacy/accept:
+    post:
+      summary: Accept privacy notice
+      tags:
+        - Account
+      description: Records the user's consent. Sets privacyAcceptedAt and
+        privacyAcceptedVersion on the user record. Safe to call multiple times.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
         "401":
           description: Default Response
           content:

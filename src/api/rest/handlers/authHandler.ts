@@ -88,8 +88,10 @@ export async function handleVerifyOtp(request: FastifyRequest, reply: FastifyRep
     });
 
     let userId: string;
+    let privacyAccepted: boolean;
     if (existingIdentity) {
       userId = existingIdentity.userId;
+      privacyAccepted = existingIdentity.user.privacyAcceptedAt !== null;
       await prisma.identity.upsert({
         where: { channel_channelUserKey: { channel: "app", channelUserKey: phoneNumber } },
         update: {},
@@ -107,6 +109,7 @@ export async function handleVerifyOtp(request: FastifyRequest, reply: FastifyRep
         },
       });
       userId = newUser.id;
+      privacyAccepted = false;
       log.info({ phone: maskPhone(phoneNumber) }, "New user created via app sign-up");
     }
 
@@ -122,7 +125,7 @@ export async function handleVerifyOtp(request: FastifyRequest, reply: FastifyRep
     });
 
     log.info({ userId, phone: maskPhone(phoneNumber) }, "Auth successful");
-    reply.code(200).send({ accessToken, refreshToken, userId });
+    reply.code(200).send({ accessToken, refreshToken, userId, privacyAccepted });
   } catch (err) {
     captureException(err, { requestId: request.id, handler: "verifyOtp" });
     log.error({ err }, "verifyOtp failed");

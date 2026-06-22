@@ -4,7 +4,7 @@ import { handleRequestOtp, handleVerifyOtp, handleRefreshToken, handleLogout } f
 import { handleGetMessages, handleSendMessage } from "./handlers/messageHandler";
 import { handleGenerateSummary, handleGetSummary, handleGetSummaryPdf } from "./handlers/summaryHandler";
 import { handleGetCheckin, handleSetupCheckin } from "./handlers/checkinHandler";
-import { handleGetStats, handleDeleteAccountData, handleGetPrivacy } from "./handlers/accountHandler";
+import { handleGetStats, handleDeleteAccountData, handleGetPrivacy, handleAcceptPrivacy } from "./handlers/accountHandler";
 
 const S = {
   Error: {
@@ -26,6 +26,20 @@ const S = {
 } as const;
 
 export async function restPlugin(app: FastifyInstance): Promise<void> {
+  // Accept empty JSON bodies — Android client sends Content-Type: application/json with no body
+  // on no-payload POSTs. This override is scoped to the REST plugin; WA plugin has its own.
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
+    if (!body || (body as string).trim() === "") {
+      done(null, {});
+      return;
+    }
+    try {
+      done(null, JSON.parse(body as string));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
+
   // ── Auth ──────────────────────────────────────────────────────────────────────
 
   app.post("/auth/request-otp", {
@@ -68,6 +82,7 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
             accessToken: { type: "string", description: "JWT, expires in 1 hour" },
             refreshToken: { type: "string", description: "JWT, expires in 30 days" },
             userId: { type: "string" },
+            privacyAccepted: { type: "boolean", description: "Whether the user has accepted the privacy notice" },
           },
         },
         401: S.Error,
@@ -348,10 +363,25 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
           properties: {
             message: { type: "string" },
             link: { type: "string", nullable: true },
+            privacyAccepted: { type: "boolean", description: "True if user accepted the current policy version" },
           },
         },
         401: S.Error,
       },
     },
   }, handleGetPrivacy);
+
+  app.post("/privacy/accept", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Account"],
+      summary: "Accept privacy notice",
+      description: "Records the user's consent. Sets privacyAcceptedAt and privacyAcceptedVersion on the user record. Safe to call multiple times.",
+      security: [{ BearerAuth: [] }],
+      response: {
+        200: { type: "object", properties: { success: { type: "boolean" } } },
+        401: S.Error,
+      },
+    },
+  }, handleAcceptPrivacy);
 }

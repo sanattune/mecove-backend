@@ -67,9 +67,39 @@ export async function handleDeleteAccountData(request: FastifyRequest, reply: Fa
   }
 }
 
-export async function handleGetPrivacy(_request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  reply.code(200).send({
-    message: consentConfig.mvp.message,
-    link: consentConfig.mvp.link ?? null,
-  });
+export async function handleGetPrivacy(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const log = childLogger({ requestId: request.id, handler: "getPrivacy" });
+  const userId = request.userId!;
+  try {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { privacyAcceptedVersion: true } });
+    const privacyAccepted = user.privacyAcceptedVersion === consentConfig.mvp.version;
+    reply.code(200).send({
+      message: consentConfig.mvp.message,
+      link: consentConfig.mvp.link ?? null,
+      privacyAccepted,
+    });
+  } catch (err) {
+    captureException(err, { requestId: request.id, handler: "getPrivacy" });
+    log.error({ err }, "getPrivacy failed");
+    reply.code(500).send(Errors.internal());
+  }
+}
+
+export async function handleAcceptPrivacy(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const log = childLogger({ requestId: request.id, handler: "acceptPrivacy" });
+  const userId = request.userId!;
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        privacyAcceptedAt: new Date(),
+        privacyAcceptedVersion: consentConfig.mvp.version,
+      },
+    });
+    reply.code(200).send({ success: true });
+  } catch (err) {
+    captureException(err, { requestId: request.id, handler: "acceptPrivacy" });
+    log.error({ err }, "acceptPrivacy failed");
+    reply.code(500).send(Errors.internal());
+  }
 }

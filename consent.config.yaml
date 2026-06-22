@@ -8,7 +8,7 @@ welcome:
     Please review the notice below and tap Accept to continue.
 
 mvp:
-  version: "v2"
+  version: "v3"
   message: |-
     By participating in the SessionBridge MVP, you acknowledge that:
 
