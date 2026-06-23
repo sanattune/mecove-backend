@@ -91,6 +91,15 @@ Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Requ
 
 **Privacy gate:** `privacyAccepted` is a version check (`user.privacyAcceptedVersion === consentConfig.mvp.version`), not just non-null. Bumping `mvp.version` in `consent.config.yaml` forces re-acceptance for all users.
 
+### Professional endpoints (coach-support)
+
+Handlers in `handlers/professionalHandler.ts`. See `docs/plans/plan_coach-support.md`.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/professional/profiles` | Self-serve onboarding. Body `{professionalType: therapist\|counsellor\|coach, displayName, additionalTitle?}`. Creates a `ProfessionalProfile` and sets `User.isProfessional=true` (one txn). Active immediately; `verificationStatus='pending'`. Returns 201 with the profile. A user may hold several profiles (1:N). |
+| GET | `/professional/profiles` | Returns `{profiles: [...]}` — the caller's own profiles (empty if none). |
+
 **Encryption:** Messages encrypted/decrypted with user's DEK via `getOrCreateUserDek()`. History endpoint decrypts before returning. `decryptText()` is safe on non-encrypted strings.
 
 ### Middleware

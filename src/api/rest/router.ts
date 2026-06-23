@@ -5,6 +5,7 @@ import { handleGetMessages, handleSendMessage } from "./handlers/messageHandler"
 import { handleGenerateInsight, handleGetInsight, handleGetInsightPdf } from "./handlers/insightHandler";
 import { handleGetCheckin, handleSetupCheckin } from "./handlers/checkinHandler";
 import { handleGetStats, handleDeleteAccountData, handleGetPrivacy, handleAcceptPrivacy } from "./handlers/accountHandler";
+import { handleCreateProfessionalProfile, handleListProfessionalProfiles } from "./handlers/professionalHandler";
 
 const S = {
   Error: {
@@ -21,6 +22,17 @@ const S = {
       role: { type: "string", enum: ["user", "assistant"] },
       content: { type: "string" },
       timestamp: { type: "string", format: "date-time" },
+    },
+  },
+  ProfessionalProfile: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      professionalType: { type: "string", enum: ["therapist", "counsellor", "coach"] },
+      displayName: { type: "string" },
+      additionalTitle: { type: "string", nullable: true },
+      verificationStatus: { type: "string" },
+      createdAt: { type: "string", format: "date-time" },
     },
   },
 } as const;
@@ -386,4 +398,47 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleAcceptPrivacy);
+
+  // ── Professional ──────────────────────────────────────────────────────────────
+
+  app.post("/professional/profiles", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Professional"],
+      summary: "Create a professional profile",
+      description: "Self-serve onboarding. Creates a ProfessionalProfile for the caller and marks them a professional. A user may hold several profiles (e.g. therapist and coach). Active immediately; verificationStatus starts 'pending'.",
+      security: [{ BearerAuth: [] }],
+      body: {
+        type: "object",
+        required: ["professionalType", "displayName"],
+        properties: {
+          professionalType: { type: "string", enum: ["therapist", "counsellor", "coach"] },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          additionalTitle: { type: "string", maxLength: 120 },
+        },
+      },
+      response: {
+        201: S.ProfessionalProfile,
+        400: S.Error,
+        401: S.Error,
+      },
+    },
+  }, handleCreateProfessionalProfile);
+
+  app.get("/professional/profiles", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Professional"],
+      summary: "List the caller's professional profiles",
+      description: "Returns the authenticated user's own professional profiles (empty array if none).",
+      security: [{ BearerAuth: [] }],
+      response: {
+        200: {
+          type: "object",
+          properties: { profiles: { type: "array", items: S.ProfessionalProfile } },
+        },
+        401: S.Error,
+      },
+    },
+  }, handleListProfessionalProfiles);
 }

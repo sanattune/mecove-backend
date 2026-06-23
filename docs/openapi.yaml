@@ -780,6 +780,138 @@ paths:
                     type: string
                   message:
                     type: string
+  /professional/profiles:
+    post:
+      summary: Create a professional profile
+      tags:
+        - Professional
+      description: Self-serve onboarding. Creates a ProfessionalProfile for the caller
+        and marks them a professional. A user may hold several profiles (e.g.
+        therapist and coach). Active immediately; verificationStatus starts
+        'pending'.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - professionalType
+                - displayName
+              properties:
+                professionalType:
+                  type: string
+                  enum:
+                    - therapist
+                    - counsellor
+                    - coach
+                displayName:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                additionalTitle:
+                  type: string
+                  maxLength: 120
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalType:
+                    type: string
+                    enum:
+                      - therapist
+                      - counsellor
+                      - coach
+                  displayName:
+                    type: string
+                  additionalTitle:
+                    type: string
+                    nullable: true
+                  verificationStatus:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    get:
+      summary: List the caller's professional profiles
+      tags:
+        - Professional
+      description: Returns the authenticated user's own professional profiles (empty
+        array if none).
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        professionalType:
+                          type: string
+                          enum:
+                            - therapist
+                            - counsellor
+                            - coach
+                        displayName:
+                          type: string
+                        additionalTitle:
+                          type: string
+                          nullable: true
+                        verificationStatus:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
   /webhooks/whatsapp:
     get:
       responses:
@@ -794,7 +926,7 @@ paths:
       responses:
         "200":
           description: Default Response
-  /debug/enqueue-summary:
+  /debug/enqueue-insight:
     get: &a2
       responses:
         "200":
@@ -807,9 +939,11 @@ tags:
     description: OTP sign-in, token refresh, logout
   - name: Messages
     description: Chat messages and AI replies
-  - name: Summary
-    description: Report generation and PDF download
+  - name: Insights
+    description: Insight generation and PDF download
   - name: Checkin
     description: Daily reminder configuration
   - name: Account
     description: User stats, data deletion, privacy
+  - name: Professional
+    description: Professional profiles (coach/therapist/counsellor onboarding)

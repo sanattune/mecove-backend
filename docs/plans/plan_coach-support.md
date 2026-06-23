@@ -29,7 +29,15 @@ drift (Prisma doesn't track the partial index, so no drift gotcha). No behavior 
 **Implements:** D3, D4, D13, D19, D22, D24.
 **Acceptance:** `prisma generate` + `migrate dev` clean; `tsc` green; no behavior yet.
 
-## Phase 1 — Professional identity & onboarding
+## Phase 1 — Professional identity & onboarding ✅ DONE 2026-06-23
+`POST /professional/profiles` (create, lean: type/displayName/additionalTitle; flips
+`User.isProfessional` in a txn) + `GET /professional/profiles` (own list). New
+`src/api/rest/handlers/professionalHandler.ts`; routes + `Professional` tag + OpenAPI
+schema; both specs regenerated. Verified end-to-end via Fastify `inject` (create→201,
+pending status, flag flips, 1:N second profile, list=2, bad type→400, no token→401).
+NOTES: `requireProfessional` role helper DEFERRED to Phase 2 (first consumer there —
+avoids dead code). CORS = no code (env `CORS_ALLOWED_ORIGINS`; add portal origin at
+deploy).
 **Deliverables**
 - `POST /professional/profiles` — create a ProfessionalProfile (professionalType,
   additionalTitle, displayName); sets `User.isProfessional=true`;

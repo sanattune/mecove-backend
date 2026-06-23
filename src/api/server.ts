@@ -83,6 +83,7 @@ export async function buildApp() {
         { name: "Insights", description: "Insight generation and PDF download" },
         { name: "Checkin", description: "Daily reminder configuration" },
         { name: "Account", description: "User stats, data deletion, privacy" },
+        { name: "Professional", description: "Professional profiles (coach/therapist/counsellor onboarding)" },
       ],
     },
   }));
