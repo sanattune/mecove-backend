@@ -8,4 +8,5 @@ export const Errors = {
   invalidOtp: () => ({ error: "INVALID_OTP", message: "Incorrect or expired code." }),
   userNotFound: () => ({ error: "USER_NOT_FOUND", message: "No meCove account linked to this number." }),
   conflict: (message: string) => ({ error: "CONFLICT", message }),
+  forbidden: (message = "You do not have access to this resource.") => ({ error: "FORBIDDEN", message }),
 };

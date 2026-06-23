@@ -99,6 +99,10 @@ Handlers in `handlers/professionalHandler.ts`. See `docs/plans/plan_coach-suppor
 |---|---|---|
 | POST | `/professional/profiles` | Self-serve onboarding. Body `{professionalType: therapist\|counsellor\|coach, displayName, additionalTitle?}`. Creates a `ProfessionalProfile` and sets `User.isProfessional=true` (one txn). Active immediately; `verificationStatus='pending'`. Returns 201 with the profile. A user may hold several profiles (1:N). |
 | GET | `/professional/profiles` | Returns `{profiles: [...]}` — the caller's own profiles (empty if none). |
+| POST | `/professional/engagements` | Pro opens an engagement (`engagementHandler.ts`). Body `{professionalId, clientPhone (E.164), startDate?, endDate?}`. Matches `clientPhone` against `Identity.channelUserKey`: account exists → **add** (`clientUserId` set); none → **invite** (`inviteePhone` set, reconciled on signup). Always `status='pending'`. 409 on a duplicate pending/active pair (D24); 404 if `professionalId` isn't the caller's; 403 if not a professional. |
+| GET | `/professional/engagements` | `{engagements: [...]}` across the caller's profiles, newest first; includes linked client `{userId, phone, displayName}` once attached. |
+
+`/professional/*` routes use `onRequest: [authenticate, requireProfessional]` — the latter (in `middleware/auth.ts`) 403s callers without `User.isProfessional`; per-profile ownership is checked in the handler against the specific `professionalId`.
 
 **Encryption:** Messages encrypted/decrypted with user's DEK via `getOrCreateUserDek()`. History endpoint decrypts before returning. `decryptText()` is safe on non-encrypted strings.
 

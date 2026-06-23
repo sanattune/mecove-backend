@@ -1,11 +1,12 @@
 import type { FastifyInstance } from "fastify";
-import { authenticate } from "./middleware/auth";
+import { authenticate, requireProfessional } from "./middleware/auth";
 import { handleRequestOtp, handleVerifyOtp, handleRefreshToken, handleLogout } from "./handlers/authHandler";
 import { handleGetMessages, handleSendMessage } from "./handlers/messageHandler";
 import { handleGenerateInsight, handleGetInsight, handleGetInsightPdf } from "./handlers/insightHandler";
 import { handleGetCheckin, handleSetupCheckin } from "./handlers/checkinHandler";
 import { handleGetStats, handleDeleteAccountData, handleGetPrivacy, handleAcceptPrivacy } from "./handlers/accountHandler";
 import { handleCreateProfessionalProfile, handleListProfessionalProfiles } from "./handlers/professionalHandler";
+import { handleCreateEngagement, handleListProfessionalEngagements } from "./handlers/engagementHandler";
 
 const S = {
   Error: {
@@ -33,6 +34,31 @@ const S = {
       additionalTitle: { type: "string", nullable: true },
       verificationStatus: { type: "string" },
       createdAt: { type: "string", format: "date-time" },
+    },
+  },
+  Engagement: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      professionalId: { type: "string" },
+      status: { type: "string", enum: ["pending", "active", "ended"] },
+      startDate: { type: "string", format: "date-time", nullable: true },
+      endDate: { type: "string", format: "date-time", nullable: true },
+      autoSendSessionBridge: { type: "boolean" },
+      acceptedAt: { type: "string", format: "date-time", nullable: true },
+      endedAt: { type: "string", format: "date-time", nullable: true },
+      endedBy: { type: "string", nullable: true },
+      createdAt: { type: "string", format: "date-time" },
+      client: {
+        type: "object",
+        nullable: true,
+        properties: {
+          userId: { type: "string" },
+          phone: { type: "string", nullable: true },
+          displayName: { type: "string", nullable: true },
+        },
+      },
+      inviteePhone: { type: "string", nullable: true },
     },
   },
 } as const;
@@ -441,4 +467,50 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleListProfessionalProfiles);
+
+  app.post("/professional/engagements", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "Open an engagement with a client",
+      description: "Pro-initiated. Identifies the client by E.164 phone: if an account exists it is linked (add); otherwise a pending invite is stored keyed by phone (invite), reconciled when that phone signs up. Always starts 'pending' — the client must accept. Rejects a duplicate pending/active engagement for the same pro↔client pair.",
+      security: [{ BearerAuth: [] }],
+      body: {
+        type: "object",
+        required: ["professionalId", "clientPhone"],
+        properties: {
+          professionalId: { type: "string", description: "One of the caller's professional profiles" },
+          clientPhone: { type: "string", description: "E.164, e.g. +919876543210" },
+          startDate: { type: "string", format: "date-time" },
+          endDate: { type: "string", format: "date-time" },
+        },
+      },
+      response: {
+        201: S.Engagement,
+        400: S.Error,
+        401: S.Error,
+        403: S.Error,
+        404: S.Error,
+        409: S.Error,
+      },
+    },
+  }, handleCreateEngagement);
+
+  app.get("/professional/engagements", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "List the caller's engagements",
+      description: "All engagements across the caller's professional profiles, newest first. Linked client profile (phone, name) is included once an account is attached.",
+      security: [{ BearerAuth: [] }],
+      response: {
+        200: {
+          type: "object",
+          properties: { engagements: { type: "array", items: S.Engagement } },
+        },
+        401: S.Error,
+        403: S.Error,
+      },
+    },
+  }, handleListProfessionalEngagements);
 }

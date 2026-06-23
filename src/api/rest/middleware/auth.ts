@@ -3,6 +3,7 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 import jwt from "jsonwebtoken";
 import { sendJSON } from "../../common/sendJSON";
 import { Errors } from "../../common/errors";
+import { prisma } from "../../../infra/prisma";
 import type { AuthenticatedRequest } from "../../common/httpTypes";
 
 export function getJwtSecret(): string {
@@ -27,6 +28,22 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     request.userId = payload.userId as string;
   } catch {
     reply.code(401).send(Errors.unauthorized());
+  }
+}
+
+// Role gate for /professional/* routes. Run AFTER `authenticate` (needs request.userId).
+// Checks the denormalized User.isProfessional flag; per-profile ownership is enforced
+// in the handler against the specific professionalId.
+export async function requireProfessional(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const userId = request.userId;
+  if (!userId) {
+    reply.code(401).send(Errors.unauthorized());
+    return;
+  }
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { isProfessional: true } });
+  if (!user?.isProfessional) {
+    reply.code(403).send(Errors.forbidden("Professional access required."));
+    return;
   }
 }
 

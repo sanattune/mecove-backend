@@ -912,6 +912,245 @@ paths:
                     type: string
                   message:
                     type: string
+  /professional/engagements:
+    post:
+      summary: Open an engagement with a client
+      tags:
+        - Professional
+      description: "Pro-initiated. Identifies the client by E.164 phone: if an account
+        exists it is linked (add); otherwise a pending invite is stored keyed by
+        phone (invite), reconciled when that phone signs up. Always starts
+        'pending' — the client must accept. Rejects a duplicate pending/active
+        engagement for the same pro↔client pair."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - professionalId
+                - clientPhone
+              properties:
+                professionalId:
+                  type: string
+                  description: One of the caller's professional profiles
+                clientPhone:
+                  type: string
+                  description: E.164, e.g. +919876543210
+                startDate:
+                  type: string
+                  format: date-time
+                endDate:
+                  type: string
+                  format: date-time
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalId:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - active
+                      - ended
+                  startDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  autoSendSessionBridge:
+                    type: boolean
+                  acceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedBy:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  client:
+                    type: object
+                    nullable: true
+                    properties:
+                      userId:
+                        type: string
+                      phone:
+                        type: string
+                        nullable: true
+                      displayName:
+                        type: string
+                        nullable: true
+                  inviteePhone:
+                    type: string
+                    nullable: true
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    get:
+      summary: List the caller's engagements
+      tags:
+        - Professional
+      description: All engagements across the caller's professional profiles, newest
+        first. Linked client profile (phone, name) is included once an account
+        is attached.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  engagements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        professionalId:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                            - pending
+                            - active
+                            - ended
+                        startDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        autoSendSessionBridge:
+                          type: boolean
+                        acceptedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endedBy:
+                          type: string
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                        client:
+                          type: object
+                          nullable: true
+                          properties:
+                            userId:
+                              type: string
+                            phone:
+                              type: string
+                              nullable: true
+                            displayName:
+                              type: string
+                              nullable: true
+                        inviteePhone:
+                          type: string
+                          nullable: true
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
   /webhooks/whatsapp:
     get:
       responses:

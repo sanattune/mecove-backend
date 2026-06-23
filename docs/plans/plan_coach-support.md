@@ -48,7 +48,15 @@ deploy).
 **Implements:** D1–D3, D13, D15, D16.
 **Acceptance:** a User can self-register a Pro profile, immediately active; flag flips.
 
-## Phase 2 — Engagement creation (Pro side)
+## Phase 2 — Engagement creation (Pro side) ✅ DONE 2026-06-23
+`POST /professional/engagements` (add by phone if account exists, else invite keyed
+by phone; term; status=pending; dup pending/active guard) + `GET
+/professional/engagements` (across caller's profiles, with linked client summary).
+New `engagementHandler.ts`; built `requireProfessional` gate (middleware/auth.ts) +
+`Errors.forbidden`. Client matched on raw E.164 `Identity.channelUserKey` (same key
+the OTP flow stores → Phase 3 reconciliation lines up). Verified via inject (7/7:
+non-pro→403, invite→201, add→201+client, dup→409, foreign profile→404, bad phone→400,
+list→2).
 **Deliverables**
 - `POST /professional/engagements` — Pro opens an Engagement against a client:
   - **add** (client already exists): resolve by phone → set `clientUserId`.
