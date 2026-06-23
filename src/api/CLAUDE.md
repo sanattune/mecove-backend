@@ -85,7 +85,7 @@ Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Requ
 | Method | Path | Description |
 |---|---|---|
 | GET | `/stats` | Returns `{messageCount, memberSince, lastInsight: {type, createdAt} \| null}`. |
-| DELETE | `/account/data` | Permanently deletes all messages and insights for the user. |
+| DELETE | `/account/data` | **Messages-only** (D25): deletes the user's chat messages; insights are retained (so professional-support engagements/shares stay valid). Privacy note: plaintext insights survive an erase (D22b). |
 | GET | `/privacy` | Returns `{message, link, privacyAccepted}`. Does DB fetch — `privacyAccepted` is version-checked against `consentConfig.mvp.version`. App calls this on every open when user is already logged in. |
 | POST | `/privacy/accept` | Records consent: sets `privacyAcceptedAt` (now) + `privacyAcceptedVersion` (from consent config) on user. Idempotent. Returns `{success: true}`. |
 

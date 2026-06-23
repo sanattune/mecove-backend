@@ -408,8 +408,8 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
     onRequest: [authenticate],
     schema: {
       tags: ["Account"],
-      summary: "Delete all user data",
-      description: "Permanently deletes all messages and reports for the authenticated user. Cannot be undone.",
+      summary: "Delete my messages",
+      description: "Permanently deletes the authenticated user's chat messages. Generated insights are retained (so any professional-support engagements/shares stay valid). Cannot be undone.",
       security: [{ BearerAuth: [] }],
       response: {
         200: { type: "object", properties: { success: { type: "boolean" } } },

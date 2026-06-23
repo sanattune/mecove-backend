@@ -688,11 +688,12 @@ paths:
                     type: string
   /account/data:
     delete:
-      summary: Delete all user data
+      summary: Delete my messages
       tags:
         - Account
-      description: Permanently deletes all messages and reports for the authenticated
-        user. Cannot be undone.
+      description: Permanently deletes the authenticated user's chat messages.
+        Generated insights are retained (so any professional-support
+        engagements/shares stay valid). Cannot be undone.
       security:
         - BearerAuth: []
       responses:

@@ -45,10 +45,11 @@ export async function handleDeleteAccountData(request: FastifyRequest, reply: Fa
   const log = childLogger({ requestId: request.id, handler: "deleteAccountData" });
   const userId = request.userId!;
   try {
-    await prisma.$transaction([
-      prisma.insight.deleteMany({ where: { userId } }),
-      prisma.message.deleteMany({ where: { userId } }),
-    ]);
+    // Messages-only (D25). Insights survive — so professional-support Engagements and
+    // InsightShares stay valid. PRIVACY NOTE (D22b): Insights are plaintext and hold
+    // verbatim quotes, so an account-data delete no longer erases that derived content;
+    // revisit if/when an explicit "delete my insights" action is added.
+    await prisma.message.deleteMany({ where: { userId } });
     const redis = getRedis();
     await redis.del(
       insightLockKey(userId),

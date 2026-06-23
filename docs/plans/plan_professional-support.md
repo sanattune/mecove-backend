@@ -143,7 +143,11 @@ needs **template messages** — the same `sendWhatsAppTemplate()` built by
 Sequence OTP-WhatsApp plan before this phase, or build `sendWhatsAppTemplate()` here.
 **Acceptance:** each event reaches the right recipient on the right channel.
 
-## Phase 7 — Account-delete behavior change
+## Phase 7 — Account-delete behavior change ✅ DONE 2026-06-23
+`DELETE /account/data` now **messages-only** (dropped `prisma.insight.deleteMany`,
+accountHandler.ts). Insights/engagements/shares survive. Route + API doc descriptions
+updated; privacy note (D22b) inline. Verified via inject (message gone, insight
+survives).
 **Deliverables**
 - Change `DELETE /account/data` to **messages-only** (drop `prisma.insight.deleteMany`)
   — accountHandler.ts:48-51 (D25). Insights/engagements/shares survive.
