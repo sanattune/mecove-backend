@@ -115,6 +115,20 @@ Same `engagementHandler.ts`; `authenticate` only (these are the client's own).
 
 **Invite reconciliation:** `/auth/verify` calls `reconcileEngagementInvites(userId, phone)` after resolving the user — links any pending invite where `inviteePhone == phone` (sets `clientUserId`, nulls `inviteePhone`). Idempotent; matches only unlinked pending rows (D26).
 
+### Insight sharing (coach-support, `shareHandler.ts`)
+
+Client-controlled disclosure. Mutations route through `src/coach/sharing.ts` (shared with the worker's auto-send).
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/engagements/:engagementId/shares` | Client shares an own insight (any type) with an **active** engagement. Guards: engagement is the caller's + active (409 if not), insight is the caller's (404) + ready `success`/`success_fallback` (409). Re-sharing a revoked insight reactivates it (upsert). |
+| DELETE | `/engagements/:engagementId/shares/:insightId` | Unshare — sets `revokedAt` (D12). Idempotent; 404 if no such share. |
+| PUT | `/engagements/:engagementId/auto-send` | Body `{enabled}`. Toggles `autoSendSessionBridge`; affects **future** SessionBridge insights only. 409 if engagement ended. |
+| GET | `/professional/engagements/:engagementId/insights` | Pro reads shared insights (metadata only). **Access derived**: returns `[]` unless the engagement is active; lists only non-revoked shares (D23). |
+| GET | `/professional/engagements/:engagementId/insights/:insightId/pdf` | Pro downloads a shared insight PDF, gated by the same derived access. |
+
+**Auto-send (D28):** the worker calls `autoShareSessionBridgeInsight(insightId, userId)` after a SessionBridge insight reaches `success`, sharing it (autoSent=true) to every active engagement with the toggle on. Non-fatal — a sharing failure never fails the generation job.
+
 **Encryption:** Messages encrypted/decrypted with user's DEK via `getOrCreateUserDek()`. History endpoint decrypts before returning. `decryptText()` is safe on non-encrypted strings.
 
 ### Middleware

@@ -84,7 +84,17 @@ loop.
 **Implements:** D5, D17, D26.
 **Acceptance:** invited existing user sees + accepts; new signup reconciles by phone.
 
-## Phase 4 — Insight sharing (client-controlled)
+## Phase 4 — Insight sharing (client-controlled) ✅ DONE 2026-06-23
+Client: `POST /engagements/:id/shares` (any type, active+owned+ready guards, re-share
+reactivates), `DELETE /engagements/:id/shares/:insightId` (unshare=revokedAt, D12),
+`PUT /engagements/:id/auto-send` (toggle, future-only). Pro: `GET
+/professional/engagements/:id/insights` + `/:insightId/pdf` — access DERIVED (active
+engagement + non-revoked share, D23). Shared service `src/coach/sharing.ts`
+(`shareInsightToEngagement`, `autoShareSessionBridgeInsight`); worker hook auto-shares
+completed SessionBridge to opted-in active engagements (D28, non-fatal). Verified via
+inject (19/19) incl. access-cut-on-end + worker auto-share.
+KNOWN MINOR GAP: auto-share hooks only the main success path, not the
+`success_fallback` branch in worker.ts — follow-up (rare path).
 **Deliverables**
 - `POST /engagements/:id/shares` — client shares an Insight (any type, D6 reframe) →
   `InsightShare`. `DELETE /engagements/:id/shares/:insightId` — unshare (set

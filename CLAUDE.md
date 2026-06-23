@@ -82,7 +82,8 @@ No test framework is currently configured.
 - `src/queues/` — four BullMQ queues: insightQueue, replyQueue, replyBatchQueue, reminderQueue
 - `src/consent/` — YAML-configured consent gating flow
 - `src/replyBatch/` — Redis-based message batching with atomic lock for flush
-- `src/engagement/` — proactive messaging: checkin/ (reminders), nudge/ (inactivity), shared scheduler.ts
+- `src/engagement/` — proactive messaging: checkin/ (reminders), nudge/ (inactivity), shared scheduler.ts. NOTE: this is the inactivity/reminder subsystem — NOT the coach-support `Engagement` model (that's the Professional↔Client link).
+- `src/coach/` — coach-support domain services (e.g. `sharing.ts` — InsightShare grant logic shared by REST handlers and the worker's auto-send). See `docs/plans/plan_coach-support.md`.
 
 ## Database
 

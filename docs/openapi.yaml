@@ -1344,6 +1344,378 @@ paths:
                     type: string
                   message:
                     type: string
+  /engagements/{engagementId}/shares:
+    post:
+      summary: Share an insight with this engagement
+      tags:
+        - Engagement
+      description: Client discloses one of their own insights (any type) to an active
+        engagement. The professional can then read it; no raw journal, no pull.
+        Re-sharing a previously-unshared insight reactivates it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - insightId
+              properties:
+                insightId:
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  engagementId:
+                    type: string
+                  insightId:
+                    type: string
+                  sharedAt:
+                    type: string
+                    format: date-time
+                  revokedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  autoSent:
+                    type: boolean
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /engagements/{engagementId}/shares/{insightId}:
+    delete:
+      summary: Unshare an insight
+      tags:
+        - Engagement
+      description: Client revokes a single shared insight (sets revokedAt); the
+        engagement and other shares are untouched. Idempotent.
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: insightId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /engagements/{engagementId}/auto-send:
+    put:
+      summary: Toggle auto-send of SessionBridge insights
+      tags:
+        - Engagement
+      description: When enabled, new SessionBridge insights the client generates are
+        automatically shared with this engagement. Future insights only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  engagementId:
+                    type: string
+                  autoSendSessionBridge:
+                    type: boolean
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /professional/engagements/{engagementId}/insights:
+    get:
+      summary: List insights shared on an engagement
+      tags:
+        - Professional
+      description: Insights the client has shared and not revoked, only while the
+        engagement is active (access is derived — ending the engagement cuts
+        access). Metadata only.
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  insights:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        insightId:
+                          type: string
+                        insightType:
+                          type: string
+                        status:
+                          type: string
+                        rangeStart:
+                          type: string
+                          format: date-time
+                        rangeEnd:
+                          type: string
+                          format: date-time
+                        createdAt:
+                          type: string
+                          format: date-time
+                        sharedAt:
+                          type: string
+                          format: date-time
+                        autoSent:
+                          type: boolean
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /professional/engagements/{engagementId}/insights/{insightId}/pdf:
+    get:
+      summary: Download a shared insight PDF
+      tags:
+        - Professional
+      description: PDF of a shared insight, gated by the same derived access (active
+        engagement + non-revoked share).
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: insightId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+                description: PDF file
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
   /webhooks/whatsapp:
     get:
       responses:

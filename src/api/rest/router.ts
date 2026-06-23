@@ -7,6 +7,7 @@ import { handleGetCheckin, handleSetupCheckin } from "./handlers/checkinHandler"
 import { handleGetStats, handleDeleteAccountData, handleGetPrivacy, handleAcceptPrivacy } from "./handlers/accountHandler";
 import { handleCreateProfessionalProfile, handleListProfessionalProfiles } from "./handlers/professionalHandler";
 import { handleCreateEngagement, handleListProfessionalEngagements, handleListClientEngagements, handleAcceptEngagement } from "./handlers/engagementHandler";
+import { handleShareInsight, handleUnshareInsight, handleSetAutoSend, handleListSharedInsights, handleGetSharedInsightPdf } from "./handlers/shareHandler";
 
 const S = {
   Error: {
@@ -579,4 +580,72 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleAcceptEngagement);
+
+  app.post<{ Params: { engagementId: string } }>("/engagements/:engagementId/shares", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "Share an insight with this engagement",
+      description: "Client discloses one of their own insights (any type) to an active engagement. The professional can then read it; no raw journal, no pull. Re-sharing a previously-unshared insight reactivates it.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      body: { type: "object", required: ["insightId"], properties: { insightId: { type: "string" } } },
+      response: {
+        201: { type: "object", properties: { id: { type: "string" }, engagementId: { type: "string" }, insightId: { type: "string" }, sharedAt: { type: "string", format: "date-time" }, revokedAt: { type: "string", format: "date-time", nullable: true }, autoSent: { type: "boolean" } } },
+        400: S.Error, 401: S.Error, 404: S.Error, 409: S.Error,
+      },
+    },
+  }, handleShareInsight);
+
+  app.delete<{ Params: { engagementId: string; insightId: string } }>("/engagements/:engagementId/shares/:insightId", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "Unshare an insight",
+      description: "Client revokes a single shared insight (sets revokedAt); the engagement and other shares are untouched. Idempotent.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId", "insightId"], properties: { engagementId: { type: "string" }, insightId: { type: "string" } } },
+      response: { 200: { type: "object", properties: { success: { type: "boolean" } } }, 401: S.Error, 404: S.Error },
+    },
+  }, handleUnshareInsight);
+
+  app.put<{ Params: { engagementId: string } }>("/engagements/:engagementId/auto-send", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "Toggle auto-send of SessionBridge insights",
+      description: "When enabled, new SessionBridge insights the client generates are automatically shared with this engagement. Future insights only.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      body: { type: "object", required: ["enabled"], properties: { enabled: { type: "boolean" } } },
+      response: { 200: { type: "object", properties: { engagementId: { type: "string" }, autoSendSessionBridge: { type: "boolean" } } }, 400: S.Error, 401: S.Error, 404: S.Error, 409: S.Error },
+    },
+  }, handleSetAutoSend);
+
+  app.get<{ Params: { engagementId: string } }>("/professional/engagements/:engagementId/insights", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "List insights shared on an engagement",
+      description: "Insights the client has shared and not revoked, only while the engagement is active (access is derived — ending the engagement cuts access). Metadata only.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      response: {
+        200: { type: "object", properties: { insights: { type: "array", items: { type: "object", properties: { insightId: { type: "string" }, insightType: { type: "string" }, status: { type: "string" }, rangeStart: { type: "string", format: "date-time" }, rangeEnd: { type: "string", format: "date-time" }, createdAt: { type: "string", format: "date-time" }, sharedAt: { type: "string", format: "date-time" }, autoSent: { type: "boolean" } } } } } },
+        401: S.Error, 403: S.Error, 404: S.Error,
+      },
+    },
+  }, handleListSharedInsights);
+
+  app.get<{ Params: { engagementId: string; insightId: string } }>("/professional/engagements/:engagementId/insights/:insightId/pdf", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "Download a shared insight PDF",
+      description: "PDF of a shared insight, gated by the same derived access (active engagement + non-revoked share).",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId", "insightId"], properties: { engagementId: { type: "string" }, insightId: { type: "string" } } },
+      response: { 200: { type: "string", format: "binary", description: "PDF file" }, 401: S.Error, 403: S.Error, 404: S.Error },
+    },
+  }, handleGetSharedInsightPdf);
 }

@@ -32,6 +32,7 @@ import {
 import { buildWindowBundle } from "../insight/windowBuilder";
 import { buildMinimalFallbackReport } from "../insight/sessionbridge/assembler";
 import { generateInsightPipeline } from "../insight/pipeline";
+import { autoShareSessionBridgeInsight } from "../coach/sharing";
 import { insightLockKey, insightTypePromptKey } from "../insight/keys";
 import {
   REMINDER_QUEUE_NAME,
@@ -235,6 +236,17 @@ const insightWorker = new Worker<GenerateInsightPayload>(
           ...(channel === "app" && { pdfBytes: result.pdfBytes as unknown as Uint8Array<ArrayBuffer> }),
         },
       });
+
+      // Auto-send (D28): push a completed SessionBridge to active engagements that
+      // opted in. Non-fatal — sharing failure must not fail the generation job.
+      if (insightType === "sessionbridge") {
+        try {
+          const shared = await autoShareSessionBridgeInsight(insightId, userId);
+          if (shared > 0) logger.info("auto-shared SessionBridge insight", { insightId, userId, shared });
+        } catch (shareErr) {
+          logger.error("auto-share failed", { insightId, userId, error: shareErr instanceof Error ? shareErr.message : String(shareErr) });
+        }
+      }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.error("insight generation failed", {
