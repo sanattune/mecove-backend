@@ -130,6 +130,7 @@ Product-level docs have moved to the root workspace `docs/` folder (one level up
 
 **This repo's `docs/` contains only backend-specific material:**
 - `docs/adr/` — backend architecture decision records
+- `docs/plans/` — implementation plan docs + the master tracker (`README.md`); see **Plans convention** below
 - `docs/tech-design.md` — backend system design
 - `docs/openapi.yaml` — backend's own copy of the API spec (canonical is at `../docs/specs/openapi.yaml`)
 - `docs/aws-*.md` — AWS infrastructure and runbooks
@@ -137,6 +138,7 @@ Product-level docs have moved to the root workspace `docs/` folder (one level up
 - `docs/agents/` — agent skill configuration
 - `docs/test/` — test chatlogs and checklists
 - `docs/seed-generation.md` — seed data tooling
+- `docs/misc/` — **scratch drop-zone; do NOT read files here unless the user explicitly asks about a specific one** (see `docs/misc/README.md`)
 
 **Product docs are in the root workspace:**
 - PRD: `../docs/specs/meCove_PRD_v1.0.md`
@@ -145,3 +147,18 @@ Product-level docs have moved to the root workspace `docs/` folder (one level up
 - Report design: `../docs/product/report-design.md`
 - Summary design: `../docs/product/summary-generation-design.md`
 - AI persona: `../docs/product/chat-persona-template.md`
+
+## Plans convention
+
+Detailed plan documents live in `docs/plans/`. **Never create `plan_*.md` files at the project
+root.** When writing a new plan, put it at `docs/plans/plan_<name>.md`.
+
+**Tracker is mandatory.** `docs/plans/README.md` is the master status index of every plan
+(Status + Urgency). Whenever you create a new plan, add a row for it to that tracker in the same
+change. Whenever a plan's status changes (shipped, superseded, abandoned, moved), update its row.
+A plan that is not in the tracker does not exist.
+
+**Use the template.** New plans start from `docs/plans/_TEMPLATE.md` (copy → fill). It carries a
+mandatory **Documentation impact** checklist — every plan must enumerate which docs it will
+create/update, filling each row with a path or an explicit "none + why". Docs are a deliverable
+of the plan, not an afterthought — a plan that ships code but not its docs is not shipped.

@@ -1,5 +1,9 @@
 # Plan — Revamp `Summary` → `Insight` (Layer 3, full rename)
 
+**Status:** PARTIAL · **Urgency:** LATER · **Created:** 2026-06-23 · **Branch:** `coach-support`
+> Tracked in [docs/plans/README.md]. Backend + Android code shipped & pushed (build
+> green); tail = rebuild/ship APK + Android runtime test against `/insights/*`.
+
 > Scope decided 2026-06-23: **Layer 3** — rename the Prisma model, DB table/columns,
 > internal code, **and** the public API + Android app. Sequencing: **rename FIRST**,
 > then build coach-support against `Insight` (see coach-support-notes.md D20).
