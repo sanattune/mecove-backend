@@ -1,9 +1,9 @@
 # Plan — OTP delivery via WhatsApp (replace AWS SNS SMS)
 
-**Status:** PENDING · **Urgency:** LATER · **Created:** 2026-06-23 · **Branch:** `<tbd>`
-> Tracked in [docs/plans/README.md]. Parked until coach-support phases finish.
-> The shared `sendWhatsAppTemplate()` this builds also unblocks coach-support Phase 6
-> (invite/notify over WhatsApp) — see `plan_coach-support.md`.
+**Status:** SUPERSEDED (2026-06-23) → absorbed into [plan_whatsapp-messaging](plan_whatsapp-messaging.md)
+> This plan was merged into `plan_whatsapp-messaging.md`, which owns the shared
+> `sendWhatsAppTemplate()` foundation used by both OTP and professional-support Phase 6.
+> Kept for history; do not action from here.
 
 ## Goal
 Send the login OTP over **WhatsApp only** via a Meta-approved Authentication-category

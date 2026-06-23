@@ -127,8 +127,12 @@ NOTE: "notify the other party" on end (D11) is Phase 6.
 **Implements:** D9, D10, D11.
 **Acceptance:** either party ends; expired engagements auto-close; Pro access gone.
 
-## Phase 6 — Notifications
-**Deliverables**
+## Phase 6 — Notifications  → delivered by [plan_whatsapp-messaging](plan_whatsapp-messaging.md)
+DEFERRED here; the detail + sequencing live in `plan_whatsapp-messaging.md` (it owns the
+shared `sendWhatsAppTemplate()` foundation). Summary: client events → WhatsApp; pro
+events → portal-on-login (FCM/app-push deferred); invite delivery (D17b) + insight-request
+(D8) over WhatsApp templates.
+**Deliverables (original)**
 - Client events (invite-to-accept, insight-request nudge D8, engagement ended):
   **WhatsApp + app push**.
 - Pro events (accepted, insight shared, engagement ended): **app push + portal**.
