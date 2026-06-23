@@ -13,6 +13,7 @@ import {
   verifyRefreshToken,
 } from "../middleware/auth";
 import { checkRateLimit, RateLimits } from "../middleware/rateLimit";
+import { reconcileEngagementInvites } from "./engagementHandler";
 
 const RequestOtpSchema = z.object({
   phoneNumber: z.string().regex(/^\+[1-9]\d{6,14}$/, "Phone must be E.164 format (e.g. +919876543210)"),
@@ -111,6 +112,12 @@ export async function handleVerifyOtp(request: FastifyRequest, reply: FastifyRep
       userId = newUser.id;
       privacyAccepted = false;
       log.info({ phone: maskPhone(phoneNumber) }, "New user created via app sign-up");
+    }
+
+    // Link any pending professional invite keyed by this phone to the user (D26).
+    const reconciled = await reconcileEngagementInvites(userId, phoneNumber);
+    if (reconciled > 0) {
+      log.info({ userId, count: reconciled }, "reconciled pending engagement invites");
     }
 
     const accessToken = signAccessToken(userId);

@@ -142,6 +142,116 @@ export async function handleCreateEngagement(request: FastifyRequest, reply: Fas
   }
 }
 
+// ── Client side ────────────────────────────────────────────────────────────────
+
+type ProfessionalSummary = {
+  professionalId: string;
+  displayName: string;
+  professionalType: string;
+  additionalTitle: string | null;
+  verificationStatus: string;
+};
+
+type ClientEngagementDto = Omit<EngagementDto, "client"> & { professional: ProfessionalSummary };
+
+type ClientEngagementRow = EngagementRow & {
+  professional: {
+    id: string;
+    displayName: string;
+    professionalType: string;
+    additionalTitle: string | null;
+    verificationStatus: string;
+  };
+};
+
+function clientToDto(row: ClientEngagementRow): ClientEngagementDto {
+  const base = toDto(row);
+  // The client sees who the professional is, not their own client summary.
+  const { client: _client, ...rest } = base;
+  return {
+    ...rest,
+    professional: {
+      professionalId: row.professional.id,
+      displayName: row.professional.displayName,
+      professionalType: row.professional.professionalType,
+      additionalTitle: row.professional.additionalTitle,
+      verificationStatus: row.professional.verificationStatus,
+    },
+  };
+}
+
+// Called from /auth/verify after the user is resolved (D26). Links any pending invite
+// keyed by this phone to the now-known user. Idempotent; matches only unlinked pending
+// rows. Returns how many were reconciled (for logging).
+export async function reconcileEngagementInvites(userId: string, phone: string): Promise<number> {
+  const res = await prisma.engagement.updateMany({
+    where: { inviteePhone: phone, clientUserId: null, status: "pending" },
+    data: { clientUserId: userId, inviteePhone: null },
+  });
+  return res.count;
+}
+
+// GET /engagements — the caller's engagements as a client (pending to accept, active,
+// ended history), with the professional's profile.
+export async function handleListClientEngagements(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const log = childLogger({ requestId: request.id, handler: "listClientEngagements" });
+  const userId = request.userId!;
+  try {
+    const engagements = await prisma.engagement.findMany({
+      where: { clientUserId: userId },
+      orderBy: { createdAt: "desc" },
+      include: { professional: true, clientUser: { include: { identities: true } } },
+    });
+    reply.code(200).send({ engagements: engagements.map((e) => clientToDto(e as ClientEngagementRow)) });
+  } catch (err) {
+    captureException(err, { requestId: request.id, handler: "listClientEngagements" });
+    log.error({ err }, "listClientEngagements failed");
+    reply.code(500).send(Errors.internal());
+  }
+}
+
+// POST /engagements/:engagementId/accept — client consents; pending → active (D5).
+// The universal consent gate: no client data flows until this happens.
+export async function handleAcceptEngagement(
+  request: FastifyRequest<{ Params: { engagementId: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const log = childLogger({ requestId: request.id, handler: "acceptEngagement" });
+  const userId = request.userId!;
+  try {
+    const { engagementId } = request.params;
+    const eng = await prisma.engagement.findUnique({ where: { id: engagementId } });
+    if (!eng || eng.clientUserId !== userId) {
+      reply.code(404).send(Errors.notFound("Engagement not found."));
+      return;
+    }
+    if (eng.status !== "pending") {
+      reply.code(409).send(Errors.conflict("Engagement is not pending."));
+      return;
+    }
+    try {
+      const updated = await prisma.engagement.update({
+        where: { id: engagementId },
+        data: { status: "active", acceptedAt: new Date() },
+        include: { professional: true, clientUser: { include: { identities: true } } },
+      });
+      log.info({ userId, engagementId }, "engagement accepted");
+      reply.code(200).send(clientToDto(updated as ClientEngagementRow));
+    } catch (e) {
+      // Partial-unique (D24): an active engagement with this professional already exists.
+      if ((e as { code?: string }).code === "P2002") {
+        reply.code(409).send(Errors.conflict("You already have an active engagement with this professional."));
+        return;
+      }
+      throw e;
+    }
+  } catch (err) {
+    captureException(err, { requestId: request.id, handler: "acceptEngagement" });
+    log.error({ err }, "acceptEngagement failed");
+    reply.code(500).send(Errors.internal());
+  }
+}
+
 // GET /professional/engagements — all engagements across the caller's profiles, with
 // the linked client's profile for active/accepted ones (D7).
 export async function handleListProfessionalEngagements(request: FastifyRequest, reply: FastifyReply): Promise<void> {

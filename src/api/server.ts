@@ -84,6 +84,7 @@ export async function buildApp() {
         { name: "Checkin", description: "Daily reminder configuration" },
         { name: "Account", description: "User stats, data deletion, privacy" },
         { name: "Professional", description: "Professional profiles (coach/therapist/counsellor onboarding)" },
+        { name: "Engagement", description: "Client-side engagement: list and accept" },
       ],
     },
   }));

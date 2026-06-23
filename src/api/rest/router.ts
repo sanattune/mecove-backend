@@ -6,7 +6,7 @@ import { handleGenerateInsight, handleGetInsight, handleGetInsightPdf } from "./
 import { handleGetCheckin, handleSetupCheckin } from "./handlers/checkinHandler";
 import { handleGetStats, handleDeleteAccountData, handleGetPrivacy, handleAcceptPrivacy } from "./handlers/accountHandler";
 import { handleCreateProfessionalProfile, handleListProfessionalProfiles } from "./handlers/professionalHandler";
-import { handleCreateEngagement, handleListProfessionalEngagements } from "./handlers/engagementHandler";
+import { handleCreateEngagement, handleListProfessionalEngagements, handleListClientEngagements, handleAcceptEngagement } from "./handlers/engagementHandler";
 
 const S = {
   Error: {
@@ -59,6 +59,32 @@ const S = {
         },
       },
       inviteePhone: { type: "string", nullable: true },
+    },
+  },
+  ClientEngagement: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      professionalId: { type: "string" },
+      status: { type: "string", enum: ["pending", "active", "ended"] },
+      startDate: { type: "string", format: "date-time", nullable: true },
+      endDate: { type: "string", format: "date-time", nullable: true },
+      autoSendSessionBridge: { type: "boolean" },
+      acceptedAt: { type: "string", format: "date-time", nullable: true },
+      endedAt: { type: "string", format: "date-time", nullable: true },
+      endedBy: { type: "string", nullable: true },
+      createdAt: { type: "string", format: "date-time" },
+      inviteePhone: { type: "string", nullable: true },
+      professional: {
+        type: "object",
+        properties: {
+          professionalId: { type: "string" },
+          displayName: { type: "string" },
+          professionalType: { type: "string" },
+          additionalTitle: { type: "string", nullable: true },
+          verificationStatus: { type: "string" },
+        },
+      },
     },
   },
 } as const;
@@ -513,4 +539,44 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleListProfessionalEngagements);
+
+  // ── Engagement (client side) ───────────────────────────────────────────────────
+
+  app.get("/engagements", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "List my engagements (as a client)",
+      description: "The caller's engagements with professionals — pending (to accept), active, and ended — newest first, each with the professional's profile.",
+      security: [{ BearerAuth: [] }],
+      response: {
+        200: {
+          type: "object",
+          properties: { engagements: { type: "array", items: S.ClientEngagement } },
+        },
+        401: S.Error,
+      },
+    },
+  }, handleListClientEngagements);
+
+  app.post<{ Params: { engagementId: string } }>("/engagements/:engagementId/accept", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "Accept a pending engagement",
+      description: "The client's consent gate (D5). Moves a pending engagement to active. No client data flows to the professional until this is done. 409 if the engagement is not pending or an active one with that professional already exists.",
+      security: [{ BearerAuth: [] }],
+      params: {
+        type: "object",
+        required: ["engagementId"],
+        properties: { engagementId: { type: "string" } },
+      },
+      response: {
+        200: S.ClientEngagement,
+        401: S.Error,
+        404: S.Error,
+        409: S.Error,
+      },
+    },
+  }, handleAcceptEngagement);
 }

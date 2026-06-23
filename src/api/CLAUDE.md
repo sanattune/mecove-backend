@@ -104,6 +104,17 @@ Handlers in `handlers/professionalHandler.ts`. See `docs/plans/plan_coach-suppor
 
 `/professional/*` routes use `onRequest: [authenticate, requireProfessional]` — the latter (in `middleware/auth.ts`) 403s callers without `User.isProfessional`; per-profile ownership is checked in the handler against the specific `professionalId`.
 
+### Engagement endpoints (client side)
+
+Same `engagementHandler.ts`; `authenticate` only (these are the client's own).
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/engagements` | `{engagements: [...]}` — the caller's engagements as a client (pending/active/ended), each with the professional's `{displayName, professionalType, additionalTitle, verificationStatus}`. |
+| POST | `/engagements/:engagementId/accept` | Consent gate (D5): pending→active, sets `acceptedAt`. 404 if not the caller's; 409 if not pending or an active engagement with that professional already exists (partial-unique P2002). |
+
+**Invite reconciliation:** `/auth/verify` calls `reconcileEngagementInvites(userId, phone)` after resolving the user — links any pending invite where `inviteePhone == phone` (sets `clientUserId`, nulls `inviteePhone`). Idempotent; matches only unlinked pending rows (D26).
+
 **Encryption:** Messages encrypted/decrypted with user's DEK via `getOrCreateUserDek()`. History endpoint decrypts before returning. `decryptText()` is safe on non-encrypted strings.
 
 ### Middleware

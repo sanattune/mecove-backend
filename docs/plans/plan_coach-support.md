@@ -68,7 +68,13 @@ list→2).
 **Implements:** D4, D5, D7, D9, D10, D17, D26 (write side).
 **Acceptance:** Pro can invite/add; pending row created; duplicate active blocked.
 
-## Phase 3 — Client accept + pending-invite reconciliation
+## Phase 3 — Client accept + pending-invite reconciliation ✅ DONE 2026-06-23
+`GET /engagements` (client's own, with professional summary) + `POST
+/engagements/:engagementId/accept` (pending→active, consent gate D5; 409 if not
+pending / active dup via P2002; 404 foreign). Reconciliation `reconcileEngagementInvites`
+wired into `/auth/verify` (links inviteePhone→clientUserId, nulls inviteePhone; D26).
+New `Engagement` tag. Verified via inject (7/7) incl. the real verify→reconcile→accept
+loop.
 **Deliverables**
 - `GET /engagements` — client lists their engagements (pending + active).
 - `POST /engagements/:id/accept` — client accepts → `status='active'`, `acceptedAt`.

@@ -1151,6 +1151,199 @@ paths:
                     type: string
                   message:
                     type: string
+  /engagements:
+    get:
+      summary: List my engagements (as a client)
+      tags:
+        - Engagement
+      description: The caller's engagements with professionals — pending (to accept),
+        active, and ended — newest first, each with the professional's profile.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  engagements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        professionalId:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                            - pending
+                            - active
+                            - ended
+                        startDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        autoSendSessionBridge:
+                          type: boolean
+                        acceptedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endedBy:
+                          type: string
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                        inviteePhone:
+                          type: string
+                          nullable: true
+                        professional:
+                          type: object
+                          properties:
+                            professionalId:
+                              type: string
+                            displayName:
+                              type: string
+                            professionalType:
+                              type: string
+                            additionalTitle:
+                              type: string
+                              nullable: true
+                            verificationStatus:
+                              type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /engagements/{engagementId}/accept:
+    post:
+      summary: Accept a pending engagement
+      tags:
+        - Engagement
+      description: The client's consent gate (D5). Moves a pending engagement to
+        active. No client data flows to the professional until this is done. 409
+        if the engagement is not pending or an active one with that professional
+        already exists.
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalId:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - active
+                      - ended
+                  startDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  autoSendSessionBridge:
+                    type: boolean
+                  acceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedBy:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  inviteePhone:
+                    type: string
+                    nullable: true
+                  professional:
+                    type: object
+                    properties:
+                      professionalId:
+                        type: string
+                      displayName:
+                        type: string
+                      professionalType:
+                        type: string
+                      additionalTitle:
+                        type: string
+                        nullable: true
+                      verificationStatus:
+                        type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
   /webhooks/whatsapp:
     get:
       responses:
@@ -1186,3 +1379,5 @@ tags:
     description: User stats, data deletion, privacy
   - name: Professional
     description: Professional profiles (coach/therapist/counsellor onboarding)
+  - name: Engagement
+    description: "Client-side engagement: list and accept"
