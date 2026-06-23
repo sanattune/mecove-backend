@@ -45,7 +45,7 @@ Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Requ
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/auth/request-otp` | Generate OTP, send via AWS SNS. Rate: 3/15min per phone. |
+| POST | `/auth/request-otp` | Generate OTP, send via WhatsApp `mecove_otp` template (ADR-0005). Rate: 3/15min per phone. |
 | POST | `/auth/verify` | Verify OTP, upsert User+Identity (channel=`"app"`), return JWT pair. |
 | POST | `/auth/refresh` | Exchange valid refresh token for new access token. |
 | POST | `/auth/logout` | Revoke refresh token (`revokedAt` set in DB). Requires Bearer auth. |

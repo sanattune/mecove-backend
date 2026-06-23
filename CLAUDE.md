@@ -103,9 +103,9 @@ Prisma schema at `prisma/schema.prisma`. Config in `prisma.config.ts` (resolves 
 
 Required (WhatsApp): `DATABASE_URL` (or `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`), `REDIS_URL`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_PERMANENT_TOKEN`, `GROQ_API_KEY` (or `OPENAI_API_KEY`), `CONSENT_CONFIG_PATH`, `ENCRYPTION_MASTER_KEY`.
 
-Required (REST/mobile): `JWT_SECRET`, `AWS_SNS_REGION` (default `ap-south-1`), AWS credentials (`AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` or IAM role).
+Required (REST/mobile): `JWT_SECRET`. OTP is delivered over WhatsApp (the `mecove_otp` template) — reuses `WHATSAPP_PHONE_NUMBER_ID` + `WHATSAPP_PERMANENT_TOKEN`; no SMS / AWS SNS (ADR-0005).
 
-Optional: `SENTRY_DSN`, `LOG_LEVEL` (default `info`), `CORS_ALLOWED_ORIGINS` (default `*`).
+Optional: `SENTRY_DSN`, `LOG_LEVEL` (default `info`), `CORS_ALLOWED_ORIGINS` (default `*`), `WHATSAPP_OTP_TEMPLATE_NAME`/`WHATSAPP_TEMPLATE_LANG` (override template constants), `OTP_DEV_MODE` (log OTP + skip send in dev).
 
 ## Build Notes
 

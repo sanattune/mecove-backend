@@ -128,10 +128,12 @@ NOTE: "notify the other party" on end (D11) is Phase 6.
 **Acceptance:** either party ends; expired engagements auto-close; Pro access gone.
 
 ## Phase 6 — Notifications  → delivered by [plan_whatsapp-messaging](plan_whatsapp-messaging.md)
-DEFERRED here; the detail + sequencing live in `plan_whatsapp-messaging.md` (it owns the
-shared `sendWhatsAppTemplate()` foundation). Summary: client events → WhatsApp; pro
-events → portal-on-login (FCM/app-push deferred); invite delivery (D17b) + insight-request
-(D8) over WhatsApp templates.
+DELIVERED there (2026-06-23). Outcome: **B1 invite delivery (D17b)** built —
+`sendProInviteWhatsApp` fires the approved `mecove_pro_invite` template on cold-phone
+engagement create. **B3 notify-other-party = no-op by decision** (pro → portal-on-login;
+client initiates accept/share/end). **B2 insight-request (D8) DEFERRED** to that plan's
+backlog. FCM/app-push deferred. The detail lives in `plan_whatsapp-messaging.md` (owns the
+shared `sendWhatsAppTemplate()` foundation).
 **Deliverables (original)**
 - Client events (invite-to-accept, insight-request nudge D8, engagement ended):
   **WhatsApp + app push**.

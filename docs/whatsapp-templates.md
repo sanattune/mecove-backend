@@ -34,14 +34,19 @@ names now.
 - **Category:** Utility  (if Meta reclassifies as Marketing, resubmit as Marketing)
 - **Name:** `mecove_pro_invite`
 - **Language:** English — `en`
-- **Body (proposed copy — adjust freely):**
-  > Hi! {{1}}, a {{2}} on meCove, has invited you to connect so you can choose to share
-  > your reflections with them. Install meCove and sign in with this number to accept.
-  - **Parameters:** `{{1}}` = professional display name, `{{2}}` = professional type
-    (therapist / counsellor / coach).
+- **Body (final copy):**
+  > Hi! Your {{1}} {{2}} has set up meCove for you — a safe, private space for your
+  > thoughts on your wellbeing journey. Just reply to this message to begin. Install
+  > the meCove app anytime for advanced features.
+  - **Parameters:** `{{1}}` = professional type (therapist / counsellor / coach),
+    `{{2}}` = professional display name. No duplicate placeholders; ascending order.
+  - **⚠️ Category risk:** wellbeing/benefit phrasing may make Meta reclassify as
+    **Marketing**. If so, resubmit as Marketing.
+  - **Assumes WA channel stays live** ("reply to this message to begin") — invited
+    clients converse with meCove over WhatsApp, app is optional for advanced features.
 - **Button:** NONE for now — the app isn't on a store yet, so there's no install URL.
   Add a URL button (App Store / Play Store) at store launch and bump the template.
-- **Footer (optional):** "You can ignore this message if you weren't expecting it."
+- **Footer (optional, ≤60 chars):** "Ignore if you weren't expecting this or already use meCove."
 
 ---
 

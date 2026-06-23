@@ -6,7 +6,7 @@ import { Errors } from "../../common/errors";
 import { maskPhone } from "../../common/mask";
 import { childLogger } from "../../../infra/logger";
 import { captureException } from "../../../infra/sentry";
-import { generateOtp, sendOtpSms, storeOtp, verifyAndConsumeOtp } from "../../../infra/otp";
+import { generateOtp, sendOtpWhatsApp, storeOtp, verifyAndConsumeOtp } from "../../../infra/otp";
 import {
   signAccessToken,
   signRefreshToken,
@@ -49,7 +49,7 @@ export async function handleRequestOtp(request: FastifyRequest, reply: FastifyRe
     }
     const otp = generateOtp();
     await storeOtp(phoneNumber, otp);
-    await sendOtpSms(phoneNumber, otp);
+    await sendOtpWhatsApp(phoneNumber, otp);
     log.info({ phone: maskPhone(phoneNumber) }, "OTP requested");
     reply.code(200).send({ success: true });
   } catch (err) {

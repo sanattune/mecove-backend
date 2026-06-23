@@ -1,6 +1,9 @@
 # Plan — WhatsApp template messaging (OTP + professional-support notifications)
 
-**Status:** PENDING · **Urgency:** NOW · **Created:** 2026-06-23 · **Branch:** `whatsapp-messaging`
+**Status:** SHIPPED · **Urgency:** NOW · **Created:** 2026-06-23 · **Branch:** `whatsapp-messaging`
+> Both templates APPROVED + RUNTIME-VERIFIED 2026-06-23 (live test-sends delivered, 200).
+> Built: OTP over WhatsApp (replaces SNS SMS) + cold-invite delivery. B2 (insight-request)
+> deferred to backlog; B3 (notify) is no-op by decision. FCM/app-push deferred.
 > Tracked in [docs/plans/README.md]. Consolidates the former `plan_otp-whatsapp`
 > (now SUPERSEDED) and delivers professional-support **Phase 6** (notifications).
 > Two-stage: **(1) submit Meta templates NOW** (approval lead time) → **(2) build code
@@ -23,8 +26,11 @@ message, so reaching cold signup phones / invitees requires approved templates.
 - Consolidates `plan_otp-whatsapp` (SUPERSEDED → absorbed here).
 
 ## Defaults chosen
-- Template names + language via env (`WHATSAPP_OTP_TEMPLATE_NAME`,
-  `WHATSAPP_INVITE_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANG=en`).
+- Template names + language live as **constants** in `WHATSAPP_TEMPLATES`
+  (`infra/whatsapp.ts`) — immutable in Meta + identical across envs. Optional env
+  overrides (`WHATSAPP_OTP_TEMPLATE_NAME`, `WHATSAPP_INVITE_TEMPLATE_NAME`,
+  `WHATSAPP_TEMPLATE_LANG`) exist as an escape hatch but are not required.
+  *(Revised from the original env-required design — see ADR-0005.)*
 - OTP via **copy-code** button (simplest) — not one-tap autofill (autofill needs the
   Android package + signing-key hash; revisit later for better UX).
 - Invite template submitted as **Utility** (framed as an account notification).
@@ -48,20 +54,35 @@ Submit in Meta WhatsApp Manager → Message Templates. Record approved names →
 Our WhatsApp Business sender is already live (we run the WA channel).
 
 ## Stage 2 — Implementation steps (after templates approved)
-1. `infra/whatsapp.ts`: `sendWhatsAppTemplate()` + startup validation of template-name env.
-2. **OTP:** `sendOtpWhatsApp(phone, otp)`; wire `/auth/request-otp`; remove SNS usage;
-   prune `@aws-sdk/client-sns` + `AWS_SNS_REGION` (for OTP). ADR-0005.
-3. **Phase 6 B1 — invite delivery (D17b):** on `POST /professional/engagements` for a
-   COLD phone (no account), fire `mecove_pro_invite`. (Currently the invite is stored
-   silently.)
-4. **Phase 6 B2 — insight-request (D8):** `POST /professional/engagements/:id/request-insight`
-   → transient notification to the client (no table). WhatsApp (free-form if in-session,
-   else template TBD) — may need a third template if always cold.
-5. **Phase 6 B3 — notify-other-party:** hooks on accept / share / end. Client side →
-   WhatsApp; professional side → portal-on-login (no push). Pick free-form vs template
-   by session state.
+1. ✅ `infra/whatsapp.ts`: `sendWhatsAppTemplate()` + `WHATSAPP_TEMPLATES` constant map.
+2. ✅ **OTP:** `sendOtpWhatsApp(phone, otp)` (copy-code template, OTP in body+button);
+   wired `/auth/request-otp`; removed SNS usage; pruned `@aws-sdk/client-sns` +
+   `AWS_SNS_REGION`. `OTP_DEV_MODE` dev short-circuit. ADR-0005.
+   **✅ RUNTIME-VERIFIED 2026-06-23** — live test-send to a real WhatsApp number delivered
+   (200, code received with Copy button). `mecove_otp` APPROVED, lang `en`. Payload shape
+   confirmed correct (button `sub_type:"url"`, `index:0`). Test util:
+   `src/scripts/test_whatsapp_templates.ts`.
+3. ✅ **Phase 6 B1 — invite delivery (D17b):** `src/professional/notify.ts`
+   `sendProInviteWhatsApp(phone, type, name)`; fired from `handleCreateEngagement` on
+   COLD phone (invite mode), best-effort (non-fatal). `mecove_pro_invite` APPROVED (en).
+   **Needs live test-send to confirm.**
+4. **Phase 6 B2 — insight-request (D8):** ⏸ **DEFERRED** (2026-06-23 decision). Not built
+   now. Tracked in **Deferred backlog** below; revisit when there's demand. Needs a 3rd
+   template (`mecove_insight_request`) if clients are typically cold.
+5. **Phase 6 B3 — notify-other-party:** ✅ **No-op by decision (2026-06-23).** Pro side =
+   portal-on-login (reads existing `GET /professional/engagements...`); client initiates
+   accept/share/end so needs no ping. No client-facing WhatsApp notification built. If a
+   future event the client didn't initiate needs surfacing, revisit.
 6. **(Deferred) app push / FCM** — separate future plan; pro real-time push + client app
    push live there.
+
+## Deferred backlog (not in scope now)
+- **B2 — insight-request notification (D8):** let a professional nudge a client to
+  generate an insight. Deferred 2026-06-23. When picked up: decide free-form (in 24h
+  session) vs a new `mecove_insight_request` template (cold clients); add a
+  `POST /professional/engagements/:id/request-insight` route → transient client
+  notification (no DB table).
+- **App push / FCM:** real-time pro push + client app push — separate future plan.
 
 ## Documentation impact (MANDATORY)
 - Tracker (`docs/plans/README.md`): this row (PENDING); move `plan_otp-whatsapp` to Superseded.

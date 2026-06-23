@@ -23,10 +23,12 @@ Lazy-initialized ioredis client from `REDIS_URL`. Access via `getRedis()`.
 ## WhatsApp (`whatsapp.ts`)
 
 Cloud API client (Graph API v19.0). Exports:
-- `sendWhatsAppReply()` — plain text
+- `sendWhatsAppReply()` — plain text (free-form; only deliverable in 24h CS window)
 - `sendWhatsAppButtons()` — 1-3 reply buttons
 - `sendWhatsAppDocument()` — PDF (media upload + send)
 - `sendWhatsAppTypingIndicator()`
+- `sendWhatsAppTemplate(toDigits, name, lang, components)` — pre-approved template message; reaches cold numbers (used by OTP, professional invites)
+- `WHATSAPP_TEMPLATES` — constant map of approved template name+lang (`otp`, `proInvite`). Names are immutable in Meta and identical across envs, so they're constants here (env override accepted but not required).
 
 ## PDF (`pdf.ts`)
 
@@ -38,7 +40,7 @@ Pino-based structured JSON logger. Exports `logger` and `childLogger(context)` f
 
 ## OTP (`otp.ts`)
 
-SMS OTP for mobile auth. `generateOtp()` → 6-digit code. `storeOtp()` / `verifyAndConsumeOtp()` use Redis with 10-minute TTL. `sendOtpSms()` sends via AWS SNS (`AWS_SNS_REGION` env var). **Note:** India numbers require DLT registration with TRAI before SMS delivery works.
+OTP for mobile auth. `generateOtp()` → 6-digit code. `storeOtp()` / `verifyAndConsumeOtp()` use Redis with 10-minute TTL. `sendOtpWhatsApp()` delivers the code via the approved `mecove_otp` WhatsApp authentication template (copy-code button; OTP appears in both body + button params). **No SMS fallback** — AWS SNS removed, non-WhatsApp numbers can't receive a code (ADR-0005). Phone is normalized to bare digits for the Graph API `to` field; the Redis key keeps the full E.164. Dev: `OTP_DEV_MODE=true` logs the code and skips the real send.
 
 ## Sentry (`sentry.ts`)
 

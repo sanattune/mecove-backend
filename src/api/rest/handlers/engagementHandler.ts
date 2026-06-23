@@ -4,6 +4,7 @@ import { prisma } from "../../../infra/prisma";
 import { Errors } from "../../common/errors";
 import { childLogger } from "../../../infra/logger";
 import { captureException } from "../../../infra/sentry";
+import { sendProInviteWhatsApp } from "../../../professional/notify";
 
 const E164 = /^\+[1-9]\d{6,14}$/;
 
@@ -134,6 +135,18 @@ export async function handleCreateEngagement(request: FastifyRequest, reply: Fas
     });
 
     log.info({ userId, professionalId, engagementId: created.id, mode: clientUserId ? "add" : "invite" }, "engagement created");
+
+    // Phase 6 B1 (D17b): cold phone → send the WhatsApp invite. Best-effort — a send
+    // failure must not fail engagement creation (the invite is still reconciled on signup).
+    if (!clientUserId) {
+      try {
+        await sendProInviteWhatsApp(clientPhone, profile.professionalType, profile.displayName);
+      } catch (notifyErr) {
+        captureException(notifyErr, { requestId: request.id, handler: "createEngagement", phase: "invite" });
+        log.warn({ engagementId: created.id, err: notifyErr }, "pro invite WhatsApp send failed (non-fatal)");
+      }
+    }
+
     reply.code(201).send(toDto(created));
   } catch (err) {
     captureException(err, { requestId: request.id, handler: "createEngagement" });

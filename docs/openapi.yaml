@@ -22,8 +22,9 @@ paths:
       summary: Request OTP
       tags:
         - Auth
-      description: Sends a 6-digit OTP via SMS. Rate limited to 3 requests per 15
-        minutes per phone number.
+      description: Sends a 6-digit OTP over WhatsApp (the mecove_otp template). No SMS
+        fallback — the number must be reachable on WhatsApp. Rate limited to 3 requests
+        per 15 minutes per phone number.
       requestBody:
         required: true
         content:
