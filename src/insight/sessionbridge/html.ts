@@ -1,4 +1,4 @@
-import { loadImageAsDataUrl, loadReportCss, loadReportHtml } from "../templateLoader";
+import { loadImageAsDataUrl, loadReportCss, loadInsightHtml } from "../templateLoader";
 import type { WindowBundle } from "../types";
 import {
   buildAnchorRowHtml,
@@ -143,7 +143,7 @@ export function buildSessionBridgeHtmlReport(
   windowBundle: WindowBundle,
   finalSessionBridge: FinalSessionBridge
 ): string {
-  let html = loadReportHtml("sessionbridge");
+  let html = loadInsightHtml("sessionbridge");
   const css = loadReportCss();
 
   const reportDate = formatReportDate(windowBundle.window.endDate);

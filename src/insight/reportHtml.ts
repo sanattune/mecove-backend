@@ -1,8 +1,8 @@
 /**
  * Shared HTML helpers used by both report types' renderers. Per-report
  * renderers live in:
- *   src/summary/sessionbridge/html.ts
- *   src/summary/myself-lately/html.ts
+ *   src/insight/sessionbridge/html.ts
+ *   src/insight/myself-lately/html.ts
  */
 
 export function escapeHtml(s: string): string {

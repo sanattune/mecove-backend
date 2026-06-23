@@ -6,7 +6,7 @@ import { prisma } from "../infra/prisma";
 import { replyBatchQueue } from "../queues/replyBatchQueue";
 import { replyQueue } from "../queues/replyQueue";
 import { reminderQueue } from "../queues/reminderQueue";
-import { summaryQueue } from "../queues/summaryQueue";
+import { insightQueue } from "../queues/insightQueue";
 
 type SwaggerExporter = {
   swagger: (options: { yaml: true }) => string;
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   } finally {
     await app.close();
     await Promise.allSettled([
-      summaryQueue.close(),
+      insightQueue.close(),
       replyQueue.close(),
       replyBatchQueue.close(),
       reminderQueue.close(),

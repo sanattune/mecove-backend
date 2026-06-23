@@ -1,7 +1,7 @@
 import { logger } from "../infra/logger";
 import { LlmViaApi } from "../llm/llmViaApi";
 
-export class SummaryStageError extends Error {
+export class InsightStageError extends Error {
   stage: string;
   rawSnippet: string;
 
@@ -55,7 +55,7 @@ export async function runJsonStage<T>(options: RunJsonStageOptions<T>): Promise<
     lastRaw = raw;
     const latencyMs = Date.now() - startedAt;
 
-    logger.info("summary stage completed", {
+    logger.info("insight stage completed", {
       stage: options.stage,
       attempt: attempt + 1,
       latencyMs,
@@ -64,7 +64,7 @@ export async function runJsonStage<T>(options: RunJsonStageOptions<T>): Promise<
 
     if (!raw || raw.trim().length === 0) {
       if (attempt === 0) continue;
-      throw new SummaryStageError(options.stage, "Empty LLM output", raw);
+      throw new InsightStageError(options.stage, "Empty LLM output", raw);
     }
 
     try {
@@ -72,13 +72,13 @@ export async function runJsonStage<T>(options: RunJsonStageOptions<T>): Promise<
       const parsed = JSON.parse(candidate) as unknown;
       if (!options.validate(parsed)) {
         if (attempt === 0) continue;
-        throw new SummaryStageError(options.stage, "JSON schema validation failed", raw);
+        throw new InsightStageError(options.stage, "JSON schema validation failed", raw);
       }
       return parsed;
     } catch (err) {
       if (attempt === 0) continue;
-      if (err instanceof SummaryStageError) throw err;
-      throw new SummaryStageError(
+      if (err instanceof InsightStageError) throw err;
+      throw new InsightStageError(
         options.stage,
         err instanceof Error ? err.message : "Invalid JSON",
         raw
@@ -86,6 +86,6 @@ export async function runJsonStage<T>(options: RunJsonStageOptions<T>): Promise<
     }
   }
 
-  throw new SummaryStageError(options.stage, "Stage failed after retries", lastRaw);
+  throw new InsightStageError(options.stage, "Stage failed after retries", lastRaw);
 }
 

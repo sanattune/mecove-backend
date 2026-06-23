@@ -1,4 +1,4 @@
-# Prompts (`src/summary/prompts/`)
+# Prompts (`src/insight/prompts/`)
 
 LLM prompt templates used by the report pipeline, stored as plain `.md` files so non-engineers can review and edit them. Every prompt is loaded at runtime by `../promptLoader.ts` — no re-deploy needed after content edits (though version bumps in `../prompts.ts#PROMPT_VERSIONS` are a deliberate code change).
 
@@ -29,13 +29,13 @@ Common placeholders:
 
 1. **Edit content freely** — wording, rule lists, examples, emphasis.
 2. **Keep every `{{PLACEHOLDER}}`** the template already has — removing one breaks the stage.
-3. **Keep the JSON output schema at the top of each prompt stable** — it's what the stage validator enforces. If the schema needs to change, the corresponding TypeScript type (`src/summary/<report>/types.ts`) and validator must change too; that's a code-level edit.
+3. **Keep the JSON output schema at the top of each prompt stable** — it's what the stage validator enforces. If the schema needs to change, the corresponding TypeScript type (`src/insight/<report>/types.ts`) and validator must change too; that's a code-level edit.
 4. **Quote user phrasings sparingly in examples** — the prompt is sent to the LLM per report; very long examples cost tokens.
 5. **Preserve the "Return JSON only. No markdown. No commentary." lead line** — these prompts always expect JSON back.
 
 ## When to bump prompt version
 
-If a content edit meaningfully changes output (tone shift, new rule, new field), bump the relevant entry in `src/summary/prompts.ts#PROMPT_VERSIONS` so generated summaries carry the new version in their metadata. Small wording tweaks don't need a bump.
+If a content edit meaningfully changes output (tone shift, new rule, new field), bump the relevant entry in `src/insight/prompts.ts#PROMPT_VERSIONS` so generated insights carry the new version in their metadata. Small wording tweaks don't need a bump.
 
 ## How to add a new prompt
 
@@ -44,4 +44,4 @@ If a content edit meaningfully changes output (tone shift, new rule, new field),
 3. Add a builder wrapper in the appropriate report's `prompts.ts`.
 4. Add a version entry to `PromptVersions` in `../types.ts` and `PROMPT_VERSIONS` in `../prompts.ts`.
 
-The build step copies this whole folder tree to `dist/summary/prompts/` during `pnpm build`.
+The build step copies this whole folder tree to `dist/insight/prompts/` during `pnpm build`.

@@ -4,7 +4,7 @@ import path from "node:path";
 const PROMPTS_DIR = path.join(__dirname, "prompts");
 
 /**
- * Names map 1:1 to relative paths under `src/summary/prompts/`. A name
+ * Names map 1:1 to relative paths under `src/insight/prompts/`. A name
  * containing a slash resolves to a subdirectory. Kept as a union so a typo
  * fails at compile time, not at runtime.
  */

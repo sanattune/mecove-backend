@@ -1,10 +1,10 @@
 import { logger } from "../infra/logger";
 import { loadLLMConfig } from "../llm/config";
 import { buildCanonicalizerPrompt, PROMPT_VERSIONS } from "./prompts";
-import { writeSummaryArtifact, writeSummaryErrorArtifact } from "./redisArtifacts";
-import { runJsonStage, SummaryStageError } from "./stageRunner";
+import { writeInsightArtifact, writeInsightErrorArtifact } from "./redisArtifacts";
+import { runJsonStage, InsightStageError } from "./stageRunner";
 import { isCanonicalDoc } from "./validation";
-import type { ReportType, SummaryPipelineResult, WindowBundle } from "./types";
+import type { InsightType, InsightPipelineResult, WindowBundle } from "./types";
 
 import {
   buildSessionBridgeBriefPrompt,
@@ -30,25 +30,25 @@ import {
   renderMirrorPdf,
 } from "./myself-lately/assembler";
 
-export type SummaryArtifactWriter = {
+export type InsightArtifactWriter = {
   writeArtifact: (
     userId: string,
-    summaryId: string,
+    insightId: string,
     stage: string,
     payload: unknown
   ) => Promise<void>;
   writeErrorArtifact: (
     userId: string,
-    summaryId: string,
+    insightId: string,
     stage: string,
     error: string,
     rawSnippet?: string
   ) => Promise<void>;
 };
 
-const redisArtifactWriter: SummaryArtifactWriter = {
-  writeArtifact: writeSummaryArtifact,
-  writeErrorArtifact: writeSummaryErrorArtifact,
+const redisArtifactWriter: InsightArtifactWriter = {
+  writeArtifact: writeInsightArtifact,
+  writeErrorArtifact: writeInsightErrorArtifact,
 };
 
 function stageFailureTag(stage: string): string {
@@ -60,24 +60,24 @@ function stageFailureTag(stage: string): string {
   return "ASSEMBLY_FAIL";
 }
 
-type GenerateSummaryPipelineInput = {
+type GenerateInsightPipelineInput = {
   userId: string;
-  summaryId: string;
+  insightId: string;
   timezone?: string;
   windowBundle?: WindowBundle;
-  artifactWriter?: SummaryArtifactWriter;
-  reportType?: ReportType;
+  artifactWriter?: InsightArtifactWriter;
+  insightType?: InsightType;
 };
 
-export async function generateSummaryPipeline(
-  input: GenerateSummaryPipelineInput
-): Promise<SummaryPipelineResult> {
+export async function generateInsightPipeline(
+  input: GenerateInsightPipelineInput
+): Promise<InsightPipelineResult> {
   const model = loadLLMConfig();
   const artifactWriter = input.artifactWriter ?? redisArtifactWriter;
   const windowBundle = input.windowBundle ?? (await buildDbWindowBundle(input));
-  const reportType: ReportType = input.reportType ?? "sessionbridge";
+  const insightType: InsightType = input.insightType ?? "sessionbridge";
 
-  await artifactWriter.writeArtifact(input.userId, input.summaryId, "window_bundle", windowBundle);
+  await artifactWriter.writeArtifact(input.userId, input.insightId, "window_bundle", windowBundle);
 
   try {
     const canonicalStarted = Date.now();
@@ -89,14 +89,14 @@ export async function generateSummaryPipeline(
       complexity: 'medium',
       reasoning: false,
     });
-    logger.info("summary stage done", {
-      summaryId: input.summaryId,
+    logger.info("insight stage done", {
+      insightId: input.insightId,
       stage: "L1_CANONICALIZER",
       latencyMs: Date.now() - canonicalStarted,
     });
-    await artifactWriter.writeArtifact(input.userId, input.summaryId, "canonical", canonical);
+    await artifactWriter.writeArtifact(input.userId, input.insightId, "canonical", canonical);
 
-    if (reportType === "myself_lately") {
+    if (insightType === "myself_lately") {
       const recapStarted = Date.now();
       const mirrorDraft = await runJsonStage({
         stage: "L2_MIRROR_RECAP",
@@ -106,12 +106,12 @@ export async function generateSummaryPipeline(
         complexity: "high",
         reasoning: false,
       });
-      logger.info("summary stage done", {
-        summaryId: input.summaryId,
+      logger.info("insight stage done", {
+        insightId: input.insightId,
         stage: "L2_MIRROR_RECAP",
         latencyMs: Date.now() - recapStarted,
       });
-      await artifactWriter.writeArtifact(input.userId, input.summaryId, "mirror_draft", mirrorDraft);
+      await artifactWriter.writeArtifact(input.userId, input.insightId, "mirror_draft", mirrorDraft);
 
       const guardfixMirrorStarted = Date.now();
       const finalMirror = await runJsonStage({
@@ -122,12 +122,12 @@ export async function generateSummaryPipeline(
         complexity: "high",
         reasoning: true,
       });
-      logger.info("summary stage done", {
-        summaryId: input.summaryId,
+      logger.info("insight stage done", {
+        insightId: input.insightId,
         stage: "L3_MIRROR_GUARDFIX",
         latencyMs: Date.now() - guardfixMirrorStarted,
       });
-      await artifactWriter.writeArtifact(input.userId, input.summaryId, "final_mirror", finalMirror);
+      await artifactWriter.writeArtifact(input.userId, input.insightId, "final_mirror", finalMirror);
 
       const normalized = normalizeFinalMirror(finalMirror);
       const finalReportText = assembleMirrorReport(windowBundle, normalized);
@@ -139,7 +139,7 @@ export async function generateSummaryPipeline(
       ].join("|");
 
       return {
-        reportType: "myself_lately",
+        insightType: "myself_lately",
         windowBundle,
         canonical,
         mirrorDraft,
@@ -160,12 +160,12 @@ export async function generateSummaryPipeline(
       complexity: "high",
       reasoning: false,
     });
-    logger.info("summary stage done", {
-      summaryId: input.summaryId,
+    logger.info("insight stage done", {
+      insightId: input.insightId,
       stage: "L2_SESSIONBRIDGE_BRIEF",
       latencyMs: Date.now() - briefStarted,
     });
-    await artifactWriter.writeArtifact(input.userId, input.summaryId, "sessionbridge_draft", draft);
+    await artifactWriter.writeArtifact(input.userId, input.insightId, "sessionbridge_draft", draft);
 
     const guardfixStarted = Date.now();
     const finalSessionBridge = await runJsonStage({
@@ -176,12 +176,12 @@ export async function generateSummaryPipeline(
       complexity: "high",
       reasoning: true,
     });
-    logger.info("summary stage done", {
-      summaryId: input.summaryId,
+    logger.info("insight stage done", {
+      insightId: input.insightId,
       stage: "L3_SESSIONBRIDGE_GUARDFIX",
       latencyMs: Date.now() - guardfixStarted,
     });
-    await artifactWriter.writeArtifact(input.userId, input.summaryId, "sessionbridge_final", finalSessionBridge);
+    await artifactWriter.writeArtifact(input.userId, input.insightId, "sessionbridge_final", finalSessionBridge);
 
     const finalReportText = assembleSessionBridgeReport(windowBundle, finalSessionBridge);
     const pdfBytes = await renderSessionBridgePdf(windowBundle, finalSessionBridge);
@@ -192,7 +192,7 @@ export async function generateSummaryPipeline(
     ].join("|");
 
     return {
-      reportType: "sessionbridge",
+      insightType: "sessionbridge",
       windowBundle,
       canonical,
       draft,
@@ -203,25 +203,25 @@ export async function generateSummaryPipeline(
       modelName: model.modelName,
     };
   } catch (err) {
-    if (err instanceof SummaryStageError) {
-      logger.error("summary stage failed", {
-        summaryId: input.summaryId,
+    if (err instanceof InsightStageError) {
+      logger.error("insight stage failed", {
+        insightId: input.insightId,
         userId: input.userId,
         stage: err.stage,
         tag: stageFailureTag(err.stage),
         error: err.message,
       });
-      await artifactWriter.writeErrorArtifact(input.userId, input.summaryId, err.stage, err.message, err.rawSnippet);
+      await artifactWriter.writeErrorArtifact(input.userId, input.insightId, err.stage, err.message, err.rawSnippet);
     } else {
-      logger.error("summary pipeline failed", {
-        summaryId: input.summaryId,
+      logger.error("insight pipeline failed", {
+        insightId: input.insightId,
         userId: input.userId,
         tag: "ASSEMBLY_FAIL",
         error: err instanceof Error ? err.message : String(err),
       });
       await artifactWriter.writeErrorArtifact(
         input.userId,
-        input.summaryId,
+        input.insightId,
         "PIPELINE",
         err instanceof Error ? err.message : String(err)
       );
@@ -231,7 +231,7 @@ export async function generateSummaryPipeline(
 }
 
 async function buildDbWindowBundle(
-  input: Pick<GenerateSummaryPipelineInput, "userId" | "timezone">
+  input: Pick<GenerateInsightPipelineInput, "userId" | "timezone">
 ): Promise<WindowBundle> {
   const { buildWindowBundle } = await import("./windowBuilder");
   return await buildWindowBundle(input.userId, input.timezone ?? "Asia/Kolkata");

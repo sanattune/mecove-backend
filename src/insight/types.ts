@@ -80,9 +80,9 @@ export type PromptVersions = {
   mirrorGuardfix: string;
 };
 
-export type ReportType = "sessionbridge" | "myself_lately";
+export type InsightType = "sessionbridge" | "myself_lately";
 
-type SummaryPipelineCommon = {
+type InsightPipelineCommon = {
   windowBundle: WindowBundle;
   canonical: CanonicalDoc;
   finalReportText: string;
@@ -91,14 +91,14 @@ type SummaryPipelineCommon = {
   modelName: string;
 };
 
-export type SummaryPipelineResult =
-  | (SummaryPipelineCommon & {
-      reportType: "sessionbridge";
+export type InsightPipelineResult =
+  | (InsightPipelineCommon & {
+      insightType: "sessionbridge";
       draft: DraftSessionBridge;
       final: FinalSessionBridge;
     })
-  | (SummaryPipelineCommon & {
-      reportType: "myself_lately";
+  | (InsightPipelineCommon & {
+      insightType: "myself_lately";
       mirrorDraft: MirrorDraft;
       finalMirror: FinalMirror;
     });

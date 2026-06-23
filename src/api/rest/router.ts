@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { authenticate } from "./middleware/auth";
 import { handleRequestOtp, handleVerifyOtp, handleRefreshToken, handleLogout } from "./handlers/authHandler";
 import { handleGetMessages, handleSendMessage } from "./handlers/messageHandler";
-import { handleGenerateSummary, handleGetSummary, handleGetSummaryPdf } from "./handlers/summaryHandler";
+import { handleGenerateInsight, handleGetInsight, handleGetInsightPdf } from "./handlers/insightHandler";
 import { handleGetCheckin, handleSetupCheckin } from "./handlers/checkinHandler";
 import { handleGetStats, handleDeleteAccountData, handleGetPrivacy, handleAcceptPrivacy } from "./handlers/accountHandler";
 
@@ -36,7 +36,9 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
     try {
       done(null, JSON.parse(body as string));
     } catch (err) {
-      done(err as Error, undefined);
+      const parseError = err instanceof Error ? err : new Error("Invalid JSON body.");
+      (parseError as Error & { statusCode: number }).statusCode = 400;
+      done(parseError, undefined);
     }
   });
 
@@ -183,14 +185,14 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
     },
   }, handleSendMessage);
 
-  // ── Summary ───────────────────────────────────────────────────────────────────
+  // ── Insights ──────────────────────────────────────────────────────────────────
 
-  app.post("/summary/generate", {
+  app.post("/insights/generate", {
     onRequest: [authenticate],
     schema: {
-      tags: ["Summary"],
-      summary: "Request a report",
-      description: "Enqueues a report generation job. Returns a summaryId to poll. Only one report per user can be in progress at a time.",
+      tags: ["Insights"],
+      summary: "Request an insight",
+      description: "Enqueues an insight generation job. Returns an insightId to poll. Only one insight per user can be in progress at a time.",
       security: [{ BearerAuth: [] }],
       body: {
         type: "object",
@@ -201,24 +203,24 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
         },
       },
       response: {
-        202: { type: "object", properties: { summaryId: { type: "string" }, status: { type: "string" } } },
+        202: { type: "object", properties: { insightId: { type: "string" }, status: { type: "string" } } },
         401: S.Error,
         409: S.Error,
       },
     },
-  }, handleGenerateSummary);
+  }, handleGenerateInsight);
 
-  app.get<{ Params: { summaryId: string } }>("/summary/:summaryId", {
+  app.get<{ Params: { insightId: string } }>("/insights/:insightId", {
     onRequest: [authenticate],
     schema: {
-      tags: ["Summary"],
-      summary: "Get report status",
-      description: "Poll this after POST /summary/generate. Status progresses queued → processing → success | success_fallback | failed.",
+      tags: ["Insights"],
+      summary: "Get insight status",
+      description: "Poll this after POST /insights/generate. Status progresses queued → processing → success | success_fallback | failed.",
       security: [{ BearerAuth: [] }],
       params: {
         type: "object",
-        required: ["summaryId"],
-        properties: { summaryId: { type: "string" } },
+        required: ["insightId"],
+        properties: { insightId: { type: "string" } },
       },
       response: {
         200: {
@@ -226,7 +228,7 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
           properties: {
             id: { type: "string" },
             status: { type: "string", enum: ["queued", "processing", "success", "success_fallback", "failed"] },
-            reportType: { type: "string" },
+            insightType: { type: "string" },
             rangeStart: { type: "string", format: "date-time" },
             rangeEnd: { type: "string", format: "date-time" },
             createdAt: { type: "string", format: "date-time" },
@@ -236,19 +238,19 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
         404: S.Error,
       },
     },
-  }, handleGetSummary);
+  }, handleGetInsight);
 
-  app.get<{ Params: { summaryId: string } }>("/summary/:summaryId/pdf", {
+  app.get<{ Params: { insightId: string } }>("/insights/:insightId/pdf", {
     onRequest: [authenticate],
     schema: {
-      tags: ["Summary"],
-      summary: "Download report PDF",
-      description: "Returns the PDF bytes for a completed report. Only available once status is success or success_fallback.",
+      tags: ["Insights"],
+      summary: "Download insight PDF",
+      description: "Returns the PDF bytes for a completed insight. Only available once status is success or success_fallback.",
       security: [{ BearerAuth: [] }],
       params: {
         type: "object",
-        required: ["summaryId"],
-        properties: { summaryId: { type: "string" } },
+        required: ["insightId"],
+        properties: { insightId: { type: "string" } },
       },
       response: {
         200: { type: "string", format: "binary", description: "PDF file" },
@@ -256,7 +258,7 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
         404: S.Error,
       },
     },
-  }, handleGetSummaryPdf);
+  }, handleGetInsightPdf);
 
   // ── Checkin ───────────────────────────────────────────────────────────────────
 
@@ -322,7 +324,7 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
           properties: {
             messageCount: { type: "integer" },
             memberSince: { type: "string", format: "date-time", nullable: true },
-            lastReport: {
+            lastInsight: {
               nullable: true,
               type: "object",
               properties: {

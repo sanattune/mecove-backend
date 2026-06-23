@@ -1,4 +1,4 @@
-# SessionBridge Brief (`src/summary/sessionbridge/`)
+# SessionBridge Brief (`src/insight/sessionbridge/`)
 
 Factual {{N}}-day therapist/coach data export. NO interpretation, NO advice, NO prose conclusions — every field maps to something in canonical. Structured for scan-reading before or during a session.
 
@@ -32,4 +32,4 @@ All dates render as `Month D` (e.g. `April 5`). Month in words, day in numbers, 
 
 ## Fallback path
 
-If the full pipeline fails, `buildMinimalFallbackReport` assembles a bare-bones brief directly from raw window messages (daily log only, no themes/signals/variation/words). Worker uses this when `generateSummaryPipeline` throws.
+If the full pipeline fails, `buildMinimalFallbackReport` assembles a bare-bones brief directly from raw window messages (daily log only, no themes/signals/variation/words). Worker uses this when `generateInsightPipeline` throws.

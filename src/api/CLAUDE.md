@@ -27,7 +27,7 @@ Graceful shutdown on SIGTERM/SIGINT (10s drain timeout).
 All WhatsApp logic extracted from the old monolithic server.ts. Exports:
 - `handleWhatsAppVerification` — GET hub challenge
 - `handleWhatsAppWebhook` — POST message ingestion (approval gate → consent gate → button gates → batching)
-- `handleDebugConsentStatus`, `handleDebugEnqueueSummary` — debug endpoints
+- `handleDebugConsentStatus`, `handleDebugEnqueueInsight` — debug endpoints
 
 ## `rest/` — Mobile App REST API
 
@@ -65,13 +65,13 @@ Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Requ
 
 **Message send flow:** Store message with `channel="app"` Identity → call `generateAckDecision()` directly (no queue) → store reply → return both in response. App waits for reply in the same HTTP response.
 
-### Summary endpoints
+### Insight endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/summary/generate` | Enqueue report (body: `{type, range}`). Returns `{summaryId, status: "queued"}`. One in-flight per user (409 if busy). |
-| GET | `/summary/:id` | Poll status: `queued → processing → success \| success_fallback \| failed` |
-| GET | `/summary/:id/pdf` | Download PDF bytes. Only available when status is success/success_fallback. |
+| POST | `/insights/generate` | Enqueue insight (body: `{type, range}`). Returns `{insightId, status: "queued"}`. One in-flight per user (409 if busy). |
+| GET | `/insights/:insightId` | Poll status: `queued → processing → success \| success_fallback \| failed`. Returns `{id, status, insightType, rangeStart, rangeEnd, createdAt}`. |
+| GET | `/insights/:insightId/pdf` | Download PDF bytes. Only available when status is success/success_fallback. |
 
 ### Checkin endpoints
 
@@ -84,8 +84,8 @@ Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Requ
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/stats` | Returns `{messageCount, memberSince, lastReport: {type, createdAt} \| null}`. |
-| DELETE | `/account/data` | Permanently deletes all messages and summaries for the user. |
+| GET | `/stats` | Returns `{messageCount, memberSince, lastInsight: {type, createdAt} \| null}`. |
+| DELETE | `/account/data` | Permanently deletes all messages and insights for the user. |
 | GET | `/privacy` | Returns `{message, link, privacyAccepted}`. Does DB fetch — `privacyAccepted` is version-checked against `consentConfig.mvp.version`. App calls this on every open when user is already logged in. |
 | POST | `/privacy/accept` | Records consent: sets `privacyAcceptedAt` (now) + `privacyAcceptedVersion` (from consent config) on user. Idempotent. Returns `{success: true}`. |
 

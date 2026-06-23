@@ -17,7 +17,7 @@ export function buildCanonicalizerPrompt(windowBundle: WindowBundle): string {
 }
 
 // Per-report prompt builders live in:
-//   src/summary/sessionbridge/prompts.ts
-//   src/summary/myself-lately/prompts.ts
+//   src/insight/sessionbridge/prompts.ts
+//   src/insight/myself-lately/prompts.ts
 // Kept export used by:
 export type { CanonicalDoc };

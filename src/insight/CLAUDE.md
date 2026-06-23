@@ -1,4 +1,4 @@
-# Summary Pipeline (`src/summary/`)
+# Insight Pipeline (`src/insight/`)
 
 Multi-stage LLM pipeline that turns user message logs into a structured PDF report. Two report types share the L1 canonicalizer and diverge at L2.
 
@@ -7,15 +7,15 @@ Multi-stage LLM pipeline that turns user message logs into a structured PDF repo
 - `sessionbridge` — factual **therapist/coach brief** (default). See `sessionbridge/CLAUDE.md`.
 - `myself_lately` — **"Myself, Lately"** self-reflection recap. See `myself-lately/CLAUDE.md`.
 
-Selected by `reportType` on `GenerateSummaryPayload` (queue) and on `generateSummaryPipeline()` input. Persisted on `Summary.reportType`.
+Selected by `insightType` on `GenerateInsightPayload` (queue) and on `generateInsightPipeline()` input. Persisted on `Insight.insightType`.
 
 ## Layout
 
 ```
-src/summary/
+src/insight/
   CLAUDE.md                    # you are here
-  pipeline.ts                  # orchestrator; branches on reportType after L1
-  types.ts                     # shared types (WindowBundle, CanonicalDoc, ReportType, SummaryPipelineResult)
+  pipeline.ts                  # orchestrator; branches on insightType after L1
+  types.ts                     # shared types (WindowBundle, CanonicalDoc, InsightType, InsightPipelineResult)
   validation.ts                # shared type-guard helpers + canonical validator
   prompts.ts                   # canonicalizer builder + PROMPT_VERSIONS
   promptLoader.ts              # .md template loader with {{PLACEHOLDER}} substitution
@@ -45,7 +45,7 @@ src/summary/
 ## Pipeline stages
 
 1. **L1_CANONICALIZER** (shared) — normalizes raw user messages into per-day structured facts, emotion vocabulary, and numeric logs. Emits `sourceSnippet` values as complete quotable fragments (5–30 words, never mid-sentence).
-2. Branches on `reportType`:
+2. Branches on `insightType`:
    - `sessionbridge` → **L2_SESSIONBRIDGE_BRIEF** → **L3_SESSIONBRIDGE_GUARDFIX**
    - `myself_lately` → **L2_MIRROR_RECAP** → **L3_MIRROR_GUARDFIX**
 
@@ -61,11 +61,11 @@ All dates in both reports render as `Month D` (e.g. `April 5`, `March 12`). Mont
 
 ## Button flow (WhatsApp)
 
-Summary intent triggers a two-step button gate before enqueuing:
+Insight intent triggers a two-step button gate before enqueuing:
 
-1. `handleSummaryIntent` (worker) sets `summaryTypePromptKey` and sends type buttons: "SessionBridge" / "Myself, lately".
-2. User press → server stores choice in `summaryChosenTypeKey`, sets `summaryRangePromptKey`, sends range buttons (7/15/30 days).
-3. User press → server reads `summaryChosenTypeKey`, enqueues `GenerateSummaryPayload { range, reportType }`.
+1. `handleInsightIntent` (worker) sets `insightTypePromptKey` and sends type buttons: "SessionBridge" / "Myself, lately".
+2. User press → server stores choice in `insightChosenTypeKey`, sets `insightRangePromptKey`, sends range buttons (7/15/30 days).
+3. User press → server reads `insightChosenTypeKey`, enqueues `GenerateInsightPayload { range, insightType }`.
 
 ## Fixture CLI
 

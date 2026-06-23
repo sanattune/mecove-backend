@@ -19,13 +19,13 @@ A Node.js backend service for meCove, handling WhatsApp webhooks, message proces
    - Stores Message in database
    - For normal text: appends to a Redis reply batch and waits for inactivity
    - Worker generates one combined acknowledgment reply for the batch
-   - Optionally enqueues a `generateSummary` job based on LLM intent
+   - Optionally enqueues a `generateInsight` job based on LLM intent
 
-2. **Summary Generation**:
-   - Worker picks up `generateSummary` job from Redis queue
+2. **Insight Generation**:
+   - Worker picks up `generateInsight` job from Redis queue
    - Loads last 7 days of messages for the user
    - Calls LLM to generate summary
-   - Creates Summary record in database
+   - Creates Insight record in database
    - Logs completion
 
 ## 📋 Prerequisites
@@ -185,7 +185,7 @@ See [`docs/seed-generation.md`](docs/seed-generation.md) for the full seed data 
 - **User**: Represents a user in the system
 - **Identity**: User identity on a channel (e.g., WhatsApp phone number)
 - **Message**: Messages from users (linked to Identity and User)
-- **Summary**: AI-generated summaries of message ranges
+- **Insight**: AI-generated summaries of message ranges
 
 ### Prisma Commands
 
@@ -249,7 +249,7 @@ Handles incoming WhatsApp messages and webhook verification.
 - Stores messages in database (upsert by `identityId` + `sourceMessageId`)
 - For slash commands (`/chatlog`, `/clear`, `/f`): executes immediately when no batch is pending
 - For normal text: batches messages in Redis, waits for inactivity, then sends one combined AI acknowledgment reply
-- Optionally enqueues summary generation (`generateSummary`) when LLM detects summary intent
+- Optionally enqueues insight generation (`generateInsight`) when LLM detects summary intent
 
 **Webhook Setup**:
 Use the `sync:webhook` script to automatically configure the webhook with Meta/Facebook:
@@ -269,13 +269,13 @@ This script:
 
 ### Debug Endpoints
 
-#### Enqueue Summary Job
+#### Enqueue Insight Job
 
 ```http
-POST /debug/enqueue-summary
+POST /debug/enqueue-insight
 ```
 
-Enqueues a summary generation job for the test user/identity.
+Enqueues an insight generation job for the test user/identity.
 
 **Response:**
 ```json
@@ -287,28 +287,28 @@ Enqueues a summary generation job for the test user/identity.
 
 ## 🔄 Job Queue (BullMQ)
 
-### Summary Queue
+### Insight Queue
 
-The worker processes jobs from the `summary` queue:
+The worker processes jobs from the `insight` queue:
 
-- **Job Name**: `generateSummary`
+- **Job Name**: `generateInsight`
 - **Payload**: `{ userId: string, range: "last_7_days" }`
 - **Process**: 
   - Loads messages from the last 7 days for the user
   - Generates a summary using the configured LLM
-  - Creates a `Summary` record in the database with:
+  - Creates an `Insight` record in the database with:
     - `rangeStart`: 7 days ago
     - `rangeEnd`: now
     - `status`: "success"
-    - `summaryText`: Generated summary text
+    - `insightText`: Generated insight text
     - `inputMessagesCount`: Number of messages processed
     - `inputHash`: SHA-256 hash of message IDs and texts (first 32 chars)
 
-**Note**: Summary jobs are automatically enqueued when new WhatsApp messages arrive.
+**Note**: Insight jobs are automatically enqueued when new WhatsApp messages arrive.
 
 ### Queue Configuration
 
-- **Queue Name**: `summary`
+- **Queue Name**: `insight`
 - **Connection**: Redis (via `REDIS_URL`)
 - **Job Retention**: Keeps last 1000 completed jobs
 
@@ -363,7 +363,7 @@ mecove-backend/
 │   │   ├── redis.ts           # Redis connection
 │   │   └── logger.ts          # Logging utilities
 │   ├── queues/
-│   │   └── summaryQueue.ts    # BullMQ queue definition
+│   │   └── insightQueue.ts    # BullMQ queue definition
 │   ├── llm/
 │   │   ├── index.ts           # LLM integration exports
 │   │   ├── ackReply.ts        # Acknowledgment reply generation
@@ -437,8 +437,8 @@ This creates test data:
 # Health check
 curl http://localhost:3000/health
 
-# Enqueue summary job (requires test identity from db:smoke)
-curl -X POST http://localhost:3000/debug/enqueue-summary
+# Enqueue insight job (requires test identity from db:smoke)
+curl -X POST http://localhost:3000/debug/enqueue-insight
 
 # Test WhatsApp webhook verification
 curl "http://localhost:3000/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=YOUR_TOKEN&hub.challenge=test123"

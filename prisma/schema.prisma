@@ -27,7 +27,7 @@ model User {
 
   identities     Identity[]
   messages       Message[]
-  summaries      Summary[]
+  insights       Insight[]
   reminders      UserReminder[]
   settings       UserSettings?
   refreshTokens  RefreshToken[]
@@ -71,7 +71,7 @@ model Message {
   @@index([userId, repliedAt])
 }
 
-model Summary {
+model Insight {
   id                 String   @id @default(uuid()) @db.Uuid
   userId             String   @db.Uuid
   rangeStart         DateTime
@@ -79,14 +79,14 @@ model Summary {
   createdAt          DateTime @default(now())
   status             String
   channel            String   @default("whatsapp")
-  summaryText        String?  @db.Text
+  insightText        String?  @db.Text
   pdfBytes           Bytes?
   modelName          String?
   promptVersion      String?
   inputMessagesCount Int      @default(0)
   inputHash          String?
   error              String?  @db.Text
-  reportType         String   @default("sessionbridge")
+  insightType        String   @default("sessionbridge")
 
   user User @relation(fields: [userId], references: [id])
 

@@ -28,11 +28,11 @@ import { JOB_NAME_FLUSH_REPLY_BATCH, replyBatchQueue } from "../../queues/replyB
 import { encryptText } from "../../infra/encryption";
 import { getOrCreateUserDek } from "../../infra/userDek";
 import {
-  JOB_NAME_GENERATE_SUMMARY,
-  summaryQueue,
-  type GenerateSummaryPayload,
-} from "../../queues/summaryQueue";
-import type { ReportType } from "../../summary/types";
+  JOB_NAME_GENERATE_INSIGHT,
+  insightQueue,
+  type GenerateInsightPayload,
+} from "../../queues/insightQueue";
+import type { InsightType } from "../../insight/types";
 import { REPLY_BATCH_DEBOUNCE_MS } from "../../replyBatch/config";
 import { appendMessageToBatch, hasPendingBatch } from "../../replyBatch/state";
 import { sendJSON, sendText } from "../common/sendJSON";
@@ -68,21 +68,21 @@ type WhatsAppWebhookPayload = {
 
 const CONSENT_INTRO_KEY_TTL_SECONDS = 60 * 60 * 24 * 30;
 
-const SUMMARY_RANGE_PROMPT_KEY_VERSION = "v1";
-const SUMMARY_TYPE_PROMPT_KEY_VERSION = "v1";
-const SUMMARY_CHOSEN_TYPE_KEY_VERSION = "v1";
-const SUMMARY_RANGE_PROMPT_TTL_SECONDS = 10 * 60;
-const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
-const SUMMARY_ALREADY_RUNNING_TEXT = "Your previous summary is still being generated. Please wait.";
-const SUMMARY_DEFAULT_RANGE: GenerateSummaryPayload["range"] = "last_15_days";
-const SUMMARY_RANGE_ACTION_IDS: Record<string, GenerateSummaryPayload["range"]> = {
-  summary_range_7: "last_7_days",
-  summary_range_15: "last_15_days",
-  summary_range_30: "last_30_days",
+const INSIGHT_RANGE_PROMPT_KEY_VERSION = "v1";
+const INSIGHT_TYPE_PROMPT_KEY_VERSION = "v1";
+const INSIGHT_CHOSEN_TYPE_KEY_VERSION = "v1";
+const INSIGHT_RANGE_PROMPT_TTL_SECONDS = 10 * 60;
+const INSIGHT_LOCK_TTL_SECONDS = 15 * 60;
+const INSIGHT_ALREADY_RUNNING_TEXT = "Your previous insight is still being generated. Please wait.";
+const INSIGHT_DEFAULT_RANGE: GenerateInsightPayload["range"] = "last_15_days";
+const INSIGHT_RANGE_ACTION_IDS: Record<string, GenerateInsightPayload["range"]> = {
+  insight_range_7: "last_7_days",
+  insight_range_15: "last_15_days",
+  insight_range_30: "last_30_days",
 };
-const SUMMARY_TYPE_ACTION_IDS: Record<string, ReportType> = {
-  summary_type_sessionbridge: "sessionbridge",
-  summary_type_myself_lately: "myself_lately",
+const INSIGHT_TYPE_ACTION_IDS: Record<string, InsightType> = {
+  insight_type_sessionbridge: "sessionbridge",
+  insight_type_myself_lately: "myself_lately",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -109,36 +109,36 @@ function parseCommand(messageText: string): string | null {
   return trimmed.split(/\s+/)[0].toLowerCase();
 }
 
-async function sendSummaryRangePrompts(toDigits: string, reportType: ReportType): Promise<void> {
+async function sendInsightRangePrompts(toDigits: string, insightType: InsightType): Promise<void> {
   const body =
-    reportType === "myself_lately"
+    insightType === "myself_lately"
       ? "How far back should the mirror go? Pick a window."
       : "Pick a window for your activity report.";
   await sendWhatsAppButtons(toDigits, body, [
-    { id: "summary_range_7", title: "Last 7 days" },
-    { id: "summary_range_15", title: "Last 15 days" },
-    { id: "summary_range_30", title: "Last 30 days" },
+    { id: "insight_range_7", title: "Last 7 days" },
+    { id: "insight_range_15", title: "Last 15 days" },
+    { id: "insight_range_30", title: "Last 30 days" },
   ]);
 }
 
-function summaryRangePromptKey(userId: string): string {
-  return `summary:range_prompt:${SUMMARY_RANGE_PROMPT_KEY_VERSION}:${userId}`;
+function insightRangePromptKey(userId: string): string {
+  return `insight:range_prompt:${INSIGHT_RANGE_PROMPT_KEY_VERSION}:${userId}`;
 }
 
-function summaryTypePromptKey(userId: string): string {
-  return `summary:type_prompt:${SUMMARY_TYPE_PROMPT_KEY_VERSION}:${userId}`;
+function insightTypePromptKey(userId: string): string {
+  return `insight:type_prompt:${INSIGHT_TYPE_PROMPT_KEY_VERSION}:${userId}`;
 }
 
-function summaryChosenTypeKey(userId: string): string {
-  return `summary:chosen_type:${SUMMARY_CHOSEN_TYPE_KEY_VERSION}:${userId}`;
+function insightChosenTypeKey(userId: string): string {
+  return `insight:chosen_type:${INSIGHT_CHOSEN_TYPE_KEY_VERSION}:${userId}`;
 }
 
-function isReportType(value: string | null | undefined): value is ReportType {
+function isInsightType(value: string | null | undefined): value is InsightType {
   return value === "sessionbridge" || value === "myself_lately";
 }
 
-function summaryLockKey(userId: string): string {
-  return `summary:inflight:${userId}`;
+function insightLockKey(userId: string): string {
+  return `insight:inflight:${userId}`;
 }
 
 function extractInboundActionId(inbound: WhatsAppMessageNode): string | null {
@@ -149,7 +149,7 @@ function extractInboundActionId(inbound: WhatsAppMessageNode): string | null {
   return null;
 }
 
-function summaryRangeToDays(range: GenerateSummaryPayload["range"]): number {
+function insightRangeToDays(range: GenerateInsightPayload["range"]): number {
   if (range === "last_7_days") return 7;
   if (range === "last_30_days") return 30;
   return 15;
@@ -321,19 +321,19 @@ export async function handleWhatsAppWebhook(
       return;
     }
 
-    // Summary type selection gate
+    // Insight type selection gate
     {
       const redis = getRedis();
-      const typePromptKey = summaryTypePromptKey(user.id);
+      const typePromptKey = insightTypePromptKey(user.id);
       const hasTypePrompt = (await redis.exists(typePromptKey)) > 0;
       if (hasTypePrompt) {
         const actionId = extractInboundActionId(inbound);
-        const selectedType = actionId ? SUMMARY_TYPE_ACTION_IDS[actionId] : undefined;
+        const selectedType = actionId ? INSIGHT_TYPE_ACTION_IDS[actionId] : undefined;
         if (selectedType) {
           await redis.del(typePromptKey);
-          await redis.set(summaryChosenTypeKey(user.id), selectedType, "EX", SUMMARY_RANGE_PROMPT_TTL_SECONDS);
-          await redis.set(summaryRangePromptKey(user.id), "0", "EX", SUMMARY_RANGE_PROMPT_TTL_SECONDS);
-          await sendSummaryRangePrompts(toDigits, selectedType);
+          await redis.set(insightChosenTypeKey(user.id), selectedType, "EX", INSIGHT_RANGE_PROMPT_TTL_SECONDS);
+          await redis.set(insightRangePromptKey(user.id), "0", "EX", INSIGHT_RANGE_PROMPT_TTL_SECONDS);
+          await sendInsightRangePrompts(toDigits, selectedType);
           sendJSON(res, 200, { ok: true });
           return;
         }
@@ -341,49 +341,49 @@ export async function handleWhatsAppWebhook(
       }
     }
 
-    // Summary range selection gate
+    // Insight range selection gate
     {
       const redis = getRedis();
-      const promptKey = summaryRangePromptKey(user.id);
+      const promptKey = insightRangePromptKey(user.id);
       const hasPrompt = (await redis.exists(promptKey)) > 0;
       if (hasPrompt) {
         const actionId = extractInboundActionId(inbound);
-        const selectedRange = actionId ? SUMMARY_RANGE_ACTION_IDS[actionId] : undefined;
+        const selectedRange = actionId ? INSIGHT_RANGE_ACTION_IDS[actionId] : undefined;
         if (selectedRange) {
           await redis.del(promptKey);
-          const chosenTypeKey = summaryChosenTypeKey(user.id);
+          const chosenTypeKey = insightChosenTypeKey(user.id);
           const storedType = await redis.get(chosenTypeKey);
           await redis.del(chosenTypeKey);
-          const reportType: ReportType = isReportType(storedType) ? storedType : "sessionbridge";
-          const lockKey = summaryLockKey(user.id);
+          const insightType: InsightType = isInsightType(storedType) ? storedType : "sessionbridge";
+          const lockKey = insightLockKey(user.id);
           const lockValue = JSON.stringify({
             messageId: inbound.id ?? "unknown",
             createdAt: new Date().toISOString(),
             range: selectedRange,
-            reportType,
+            insightType,
           });
-          const acquired = await redis.set(lockKey, lockValue, "EX", SUMMARY_LOCK_TTL_SECONDS, "NX");
+          const acquired = await redis.set(lockKey, lockValue, "EX", INSIGHT_LOCK_TTL_SECONDS, "NX");
           if (!acquired) {
-            await sendWhatsAppReply(toDigits, SUMMARY_ALREADY_RUNNING_TEXT);
+            await sendWhatsAppReply(toDigits, INSIGHT_ALREADY_RUNNING_TEXT);
             sendJSON(res, 200, { ok: true });
             return;
           }
           try {
-            await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, {
+            await insightQueue.add(JOB_NAME_GENERATE_INSIGHT, {
               userId: user.id,
               channelUserKey: toDigits,
               range: selectedRange,
-              reportType,
+              insightType,
               channel: "whatsapp",
             });
-            const kindLabel = reportType === "myself_lately" ? "mirror" : "report";
+            const kindLabel = insightType === "myself_lately" ? "mirror" : "report";
             await sendWhatsAppReply(
               toDigits,
-              `Generating your ${kindLabel} for the last ${summaryRangeToDays(selectedRange)} days. Please wait.`
+              `Generating your ${kindLabel} for the last ${insightRangeToDays(selectedRange)} days. Please wait.`
             );
           } catch (err) {
             await redis.del(lockKey);
-            logger.error("failed to enqueue summary generation", {
+            logger.error("failed to enqueue insight generation", {
               userId: user.id,
               messageId: inbound.id ?? "unknown",
               error: err instanceof Error ? err.message : String(err),
@@ -394,7 +394,7 @@ export async function handleWhatsAppWebhook(
           return;
         }
         await redis.del(promptKey);
-        await redis.del(summaryChosenTypeKey(user.id));
+        await redis.del(insightChosenTypeKey(user.id));
       }
     }
 
@@ -554,7 +554,7 @@ export async function handleDebugConsentStatus(
   }
 }
 
-export async function handleDebugEnqueueSummary(
+export async function handleDebugEnqueueInsight(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
@@ -569,18 +569,18 @@ export async function handleDebugEnqueueSummary(
       });
       return;
     }
-    const payload: GenerateSummaryPayload = {
+    const payload: GenerateInsightPayload = {
       userId: identity.userId,
       channelUserKey: identity.channelUserKey.replace(/^\+/, ""),
-      range: SUMMARY_DEFAULT_RANGE,
-      reportType: "sessionbridge",
+      range: INSIGHT_DEFAULT_RANGE,
+      insightType: "sessionbridge",
       channel: "whatsapp",
     };
-    const job = await summaryQueue.add(JOB_NAME_GENERATE_SUMMARY, payload);
-    logger.info("debug enqueue-summary", { jobId: job.id ?? String(job.id) });
+    const job = await insightQueue.add(JOB_NAME_GENERATE_INSIGHT, payload);
+    logger.info("debug enqueue-insight", { jobId: job.id ?? String(job.id) });
     sendJSON(res, 200, { ok: true, jobId: job.id ?? String(job.id) });
   } catch (err) {
-    logger.error("POST /debug/enqueue-summary error:", err);
+    logger.error("POST /debug/enqueue-insight error:", err);
     sendJSON(res, 500, { ok: false, error: err instanceof Error ? err.message : "Unknown error" });
   }
 }

@@ -1,23 +1,23 @@
 import { Queue } from "bullmq";
 import { getRedis } from "../infra/redis";
 import { startupDebugTime } from "../infra/startupDebug";
-import type { ReportType } from "../summary/types";
+import type { InsightType } from "../insight/types";
 
-export const SUMMARY_QUEUE_NAME = "summary";
-export const JOB_NAME_GENERATE_SUMMARY = "generateSummary";
+export const INSIGHT_QUEUE_NAME = "insight";
+export const JOB_NAME_GENERATE_INSIGHT = "generateInsight";
 
-export type GenerateSummaryPayload = {
+export type GenerateInsightPayload = {
   userId: string;
   channelUserKey: string;
   range: "last_7_days" | "last_15_days" | "last_30_days";
-  reportType: ReportType;
+  insightType: InsightType;
   channel: "app" | "whatsapp";
-  summaryId?: string;
+  insightId?: string;
 };
 
-export const summaryQueue = startupDebugTime(
-  "queue:summary:create",
-  () => new Queue(SUMMARY_QUEUE_NAME, {
+export const insightQueue = startupDebugTime(
+  "queue:insight:create",
+  () => new Queue(INSIGHT_QUEUE_NAME, {
     connection: getRedis(),
     defaultJobOptions: {
       removeOnComplete: { count: 1000 },

@@ -1,4 +1,4 @@
-import { loadImageAsDataUrl, loadReportCss, loadReportHtml } from "../templateLoader";
+import { loadImageAsDataUrl, loadReportCss, loadInsightHtml } from "../templateLoader";
 import type { WindowBundle } from "../types";
 import { buildAnchorRowHtml, curlyQuotes, escapeHtml, formatReportDate, formatTimeWindow } from "../reportHtml";
 import type { FinalMirror, MomentEntry } from "./types";
@@ -111,7 +111,7 @@ export function buildMirrorHtmlReport(
   windowBundle: WindowBundle,
   finalMirror: FinalMirror
 ): string {
-  let html = loadReportHtml("myself_lately");
+  let html = loadInsightHtml("myself_lately");
   const css = loadReportCss();
 
   const reportDate = formatReportDate(windowBundle.window.endDate);

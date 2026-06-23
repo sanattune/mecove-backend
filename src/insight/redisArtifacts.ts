@@ -2,51 +2,51 @@ import { getRedis } from "../infra/redis";
 
 const ARTIFACT_TTL_SECONDS = 24 * 60 * 60;
 
-function stageKey(summaryId: string, stage: string): string {
-  return `summary:artifact:${summaryId}:${stage}`;
+function stageKey(insightId: string, stage: string): string {
+  return `insight:artifact:${insightId}:${stage}`;
 }
 
 function userIndexKey(userId: string): string {
-  return `summary:artifact:index:${userId}`;
+  return `insight:artifact:index:${userId}`;
 }
 
-export async function writeSummaryArtifact(
+export async function writeInsightArtifact(
   userId: string,
-  summaryId: string,
+  insightId: string,
   stage: string,
   payload: unknown,
   ttlSeconds = ARTIFACT_TTL_SECONDS
 ): Promise<void> {
   const redis = getRedis();
-  const key = stageKey(summaryId, stage);
+  const key = stageKey(insightId, stage);
   const value = JSON.stringify({
     userId,
-    summaryId,
+    insightId,
     stage,
     createdAt: new Date().toISOString(),
     payload,
   });
 
   const indexKey = userIndexKey(userId);
-  await redis.multi().set(key, value, "EX", ttlSeconds).sadd(indexKey, summaryId).expire(indexKey, ttlSeconds).exec();
+  await redis.multi().set(key, value, "EX", ttlSeconds).sadd(indexKey, insightId).expire(indexKey, ttlSeconds).exec();
 }
 
-export async function writeSummaryErrorArtifact(
+export async function writeInsightErrorArtifact(
   userId: string,
-  summaryId: string,
+  insightId: string,
   stage: string,
   error: string,
   rawSnippet?: string
 ): Promise<void> {
-  await writeSummaryArtifact(userId, summaryId, `error_${stage}`, {
+  await writeInsightArtifact(userId, insightId, `error_${stage}`, {
     error,
     rawSnippet: rawSnippet ?? "",
   });
 }
 
-async function listKeysForSummary(summaryId: string): Promise<string[]> {
+async function listKeysForInsight(insightId: string): Promise<string[]> {
   const redis = getRedis();
-  const pattern = stageKey(summaryId, "*");
+  const pattern = stageKey(insightId, "*");
   const keys: string[] = [];
   let cursor = "0";
   do {
@@ -57,18 +57,18 @@ async function listKeysForSummary(summaryId: string): Promise<string[]> {
   return keys;
 }
 
-export async function clearSummaryArtifactsForUser(userId: string): Promise<void> {
+export async function clearInsightArtifactsForUser(userId: string): Promise<void> {
   const redis = getRedis();
   const indexKey = userIndexKey(userId);
-  const summaryIds = await redis.smembers(indexKey);
-  if (summaryIds.length === 0) {
+  const insightIds = await redis.smembers(indexKey);
+  if (insightIds.length === 0) {
     await redis.del(indexKey);
     return;
   }
 
   const keysToDelete: string[] = [];
-  for (const summaryId of summaryIds) {
-    const keys = await listKeysForSummary(summaryId);
+  for (const insightId of insightIds) {
+    const keys = await listKeysForInsight(insightId);
     keysToDelete.push(...keys);
   }
 
@@ -77,4 +77,3 @@ export async function clearSummaryArtifactsForUser(userId: string): Promise<void
   }
   await redis.del(indexKey);
 }
-

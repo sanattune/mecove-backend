@@ -369,13 +369,13 @@ paths:
                     type: string
                   message:
                     type: string
-  /summary/generate:
+  /insights/generate:
     post:
-      summary: Request a report
+      summary: Request an insight
       tags:
-        - Summary
-      description: Enqueues a report generation job. Returns a summaryId to poll. Only
-        one report per user can be in progress at a time.
+        - Insights
+      description: Enqueues an insight generation job. Returns an insightId to poll.
+        Only one insight per user can be in progress at a time.
       requestBody:
         required: true
         content:
@@ -407,7 +407,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  summaryId:
+                  insightId:
                     type: string
                   status:
                     type: string
@@ -433,18 +433,18 @@ paths:
                     type: string
                   message:
                     type: string
-  /summary/{summaryId}:
+  /insights/{insightId}:
     get:
-      summary: Get report status
+      summary: Get insight status
       tags:
-        - Summary
-      description: Poll this after POST /summary/generate. Status progresses queued →
+        - Insights
+      description: Poll this after POST /insights/generate. Status progresses queued →
         processing → success | success_fallback | failed.
       parameters:
         - schema:
             type: string
           in: path
-          name: summaryId
+          name: insightId
           required: true
       security:
         - BearerAuth: []
@@ -466,7 +466,7 @@ paths:
                       - success
                       - success_fallback
                       - failed
-                  reportType:
+                  insightType:
                     type: string
                   rangeStart:
                     type: string
@@ -499,18 +499,18 @@ paths:
                     type: string
                   message:
                     type: string
-  /summary/{summaryId}/pdf:
+  /insights/{insightId}/pdf:
     get:
-      summary: Download report PDF
+      summary: Download insight PDF
       tags:
-        - Summary
-      description: Returns the PDF bytes for a completed report. Only available once
+        - Insights
+      description: Returns the PDF bytes for a completed insight. Only available once
         status is success or success_fallback.
       parameters:
         - schema:
             type: string
           in: path
-          name: summaryId
+          name: insightId
           required: true
       security:
         - BearerAuth: []
@@ -666,7 +666,7 @@ paths:
                     type: string
                     format: date-time
                     nullable: true
-                  lastReport:
+                  lastInsight:
                     nullable: true
                     type: object
                     properties:

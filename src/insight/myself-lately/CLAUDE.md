@@ -1,4 +1,4 @@
-# Myself, Lately (`src/summary/myself-lately/`)
+# Myself, Lately (`src/insight/myself-lately/`)
 
 Second-person self-reflection recap. Soft, observational, quote-heavy. Five sections in render order: opener, what-has-been-coming-up, moments-that-stood-out, something-to-notice, gentle-takeaway. No interpretation, no diagnosis, no advice.
 
