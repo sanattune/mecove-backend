@@ -6,7 +6,7 @@ import { handleGenerateInsight, handleGetInsight, handleGetInsightPdf } from "./
 import { handleGetCheckin, handleSetupCheckin } from "./handlers/checkinHandler";
 import { handleGetStats, handleDeleteAccountData, handleGetPrivacy, handleAcceptPrivacy } from "./handlers/accountHandler";
 import { handleCreateProfessionalProfile, handleListProfessionalProfiles } from "./handlers/professionalHandler";
-import { handleCreateEngagement, handleListProfessionalEngagements, handleListClientEngagements, handleAcceptEngagement } from "./handlers/engagementHandler";
+import { handleCreateEngagement, handleListProfessionalEngagements, handleListClientEngagements, handleAcceptEngagement, handleEndEngagementByClient, handleEndEngagementByPro } from "./handlers/engagementHandler";
 import { handleShareInsight, handleUnshareInsight, handleSetAutoSend, handleListSharedInsights, handleGetSharedInsightPdf } from "./handlers/shareHandler";
 
 const S = {
@@ -541,6 +541,18 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
     },
   }, handleListProfessionalEngagements);
 
+  app.post<{ Params: { engagementId: string } }>("/professional/engagements/:engagementId/end", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "End an engagement (professional)",
+      description: "Professional ends the engagement (D11). Status -> ended, endedBy=professional. The client's access-granting shares stop resolving immediately (derived). 409 if already ended.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      response: { 200: S.Engagement, 401: S.Error, 403: S.Error, 404: S.Error, 409: S.Error },
+    },
+  }, handleEndEngagementByPro);
+
   // ── Engagement (client side) ───────────────────────────────────────────────────
 
   app.get("/engagements", {
@@ -580,6 +592,18 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleAcceptEngagement);
+
+  app.post<{ Params: { engagementId: string } }>("/engagements/:engagementId/end", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "End an engagement (client)",
+      description: "Client ends the engagement (D11) — from pending (decline) or active. Status -> ended, endedBy=client. The professional loses access immediately (derived). 409 if already ended.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      response: { 200: S.ClientEngagement, 401: S.Error, 404: S.Error, 409: S.Error },
+    },
+  }, handleEndEngagementByClient);
 
   app.post<{ Params: { engagementId: string } }>("/engagements/:engagementId/shares", {
     onRequest: [authenticate],

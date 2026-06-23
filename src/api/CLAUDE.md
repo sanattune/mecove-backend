@@ -112,6 +112,10 @@ Same `engagementHandler.ts`; `authenticate` only (these are the client's own).
 |---|---|---|
 | GET | `/engagements` | `{engagements: [...]}` — the caller's engagements as a client (pending/active/ended), each with the professional's `{displayName, professionalType, additionalTitle, verificationStatus}`. |
 | POST | `/engagements/:engagementId/accept` | Consent gate (D5): pending→active, sets `acceptedAt`. 404 if not the caller's; 409 if not pending or an active engagement with that professional already exists (partial-unique P2002). |
+| POST | `/engagements/:engagementId/end` | Client ends (D11), from pending (decline) or active → `ended`/`endedBy=client`. 409 if already ended. Professional's access cut by derivation. |
+| POST | `/professional/engagements/:engagementId/end` | Professional ends → `ended`/`endedBy=professional`. (Pro-side route; `requireProfessional`.) |
+
+**Expiry:** a daily reminder-queue job (`JOB_NAME_SCAN_ENGAGEMENT_EXPIRY`, 00:30 UTC) runs `src/coach/lifecycle.ts#expireDueEngagements` — active engagements past `endDate` → `ended`/`endedBy=expiry`. Registered via `startEngagementExpiryScheduler`, dispatched in the `reminderWorker`.
 
 **Invite reconciliation:** `/auth/verify` calls `reconcileEngagementInvites(userId, phone)` after resolving the user — links any pending invite where `inviteePhone == phone` (sets `clientUserId`, nulls `inviteePhone`). Idempotent; matches only unlinked pending rows (D26).
 

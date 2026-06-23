@@ -33,11 +33,13 @@ import { buildWindowBundle } from "../insight/windowBuilder";
 import { buildMinimalFallbackReport } from "../insight/sessionbridge/assembler";
 import { generateInsightPipeline } from "../insight/pipeline";
 import { autoShareSessionBridgeInsight } from "../coach/sharing";
+import { expireDueEngagements, startEngagementExpiryScheduler } from "../coach/lifecycle";
 import { insightLockKey, insightTypePromptKey } from "../insight/keys";
 import {
   REMINDER_QUEUE_NAME,
   JOB_NAME_SCAN_REMINDERS,
   JOB_NAME_SCAN_NUDGES,
+  JOB_NAME_SCAN_ENGAGEMENT_EXPIRY,
   reminderQueue,
   type ScanRemindersPayload,
 } from "../queues/reminderQueue";
@@ -614,6 +616,8 @@ const reminderWorker = new Worker<ScanRemindersPayload>(
       await processReminderScan();
     } else if (job.name === JOB_NAME_SCAN_NUDGES) {
       await processNudgeScan();
+    } else if (job.name === JOB_NAME_SCAN_ENGAGEMENT_EXPIRY) {
+      await expireDueEngagements();
     }
   },
   {
@@ -680,5 +684,6 @@ process.on("SIGINT", shutdown);
 
 void startReminderScheduler(reminderQueue);
 void startNudgeScheduler(reminderQueue);
+void startEngagementExpiryScheduler(reminderQueue);
 
 logger.info("worker started (insight + reply + reply_batch + reminder queues)");

@@ -252,6 +252,74 @@ export async function handleAcceptEngagement(
   }
 }
 
+// POST /engagements/:engagementId/end — client ends the engagement (D11). Allowed from
+// pending (decline) or active. Access is cut by derivation; no share rows touched.
+export async function handleEndEngagementByClient(
+  request: FastifyRequest<{ Params: { engagementId: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const log = childLogger({ requestId: request.id, handler: "endEngagementByClient" });
+  const userId = request.userId!;
+  try {
+    const { engagementId } = request.params;
+    const eng = await prisma.engagement.findUnique({ where: { id: engagementId } });
+    if (!eng || eng.clientUserId !== userId) {
+      reply.code(404).send(Errors.notFound("Engagement not found."));
+      return;
+    }
+    if (eng.status === "ended") {
+      reply.code(409).send(Errors.conflict("Engagement has already ended."));
+      return;
+    }
+    const updated = await prisma.engagement.update({
+      where: { id: engagementId },
+      data: { status: "ended", endedAt: new Date(), endedBy: "client" },
+      include: { professional: true, clientUser: { include: { identities: true } } },
+    });
+    log.info({ userId, engagementId }, "engagement ended by client");
+    reply.code(200).send(clientToDto(updated as ClientEngagementRow));
+  } catch (err) {
+    captureException(err, { requestId: request.id, handler: "endEngagementByClient" });
+    log.error({ err }, "endEngagementByClient failed");
+    reply.code(500).send(Errors.internal());
+  }
+}
+
+// POST /professional/engagements/:engagementId/end — professional ends it (D11).
+export async function handleEndEngagementByPro(
+  request: FastifyRequest<{ Params: { engagementId: string } }>,
+  reply: FastifyReply
+): Promise<void> {
+  const log = childLogger({ requestId: request.id, handler: "endEngagementByPro" });
+  const userId = request.userId!;
+  try {
+    const { engagementId } = request.params;
+    const eng = await prisma.engagement.findUnique({
+      where: { id: engagementId },
+      include: { professional: true },
+    });
+    if (!eng || eng.professional.userId !== userId) {
+      reply.code(404).send(Errors.notFound("Engagement not found."));
+      return;
+    }
+    if (eng.status === "ended") {
+      reply.code(409).send(Errors.conflict("Engagement has already ended."));
+      return;
+    }
+    const updated = await prisma.engagement.update({
+      where: { id: engagementId },
+      data: { status: "ended", endedAt: new Date(), endedBy: "professional" },
+      include: { clientUser: { include: { identities: true } } },
+    });
+    log.info({ userId, engagementId }, "engagement ended by professional");
+    reply.code(200).send(toDto(updated));
+  } catch (err) {
+    captureException(err, { requestId: request.id, handler: "endEngagementByPro" });
+    log.error({ err }, "endEngagementByPro failed");
+    reply.code(500).send(Errors.internal());
+  }
+}
+
 // GET /professional/engagements — all engagements across the caller's profiles, with
 // the linked client's profile for active/accepted ones (D7).
 export async function handleListProfessionalEngagements(request: FastifyRequest, reply: FastifyReply): Promise<void> {

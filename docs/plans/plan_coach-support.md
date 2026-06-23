@@ -108,7 +108,15 @@ KNOWN MINOR GAP: auto-share hooks only the main success path, not the
 **Acceptance:** Pro sees only shared, non-revoked insights on active engagements;
 unshare and engagement-end both cut access with no extra writes.
 
-## Phase 5 — Engagement lifecycle: end / expiry / renewal
+## Phase 5 — Engagement lifecycle: end / expiry / renewal ✅ DONE 2026-06-23
+`POST /engagements/:id/end` (client, from pending=decline or active) + `POST
+/professional/engagements/:id/end` (pro) → status=ended, endedAt, endedBy; 409 if
+already ended; access cut by derivation (no share writes). Daily expiry sweep
+`src/coach/lifecycle.ts#expireDueEngagements` (active + endDate≤now → ended/expiry),
+registered on the shared reminderQueue (`JOB_NAME_SCAN_ENGAGEMENT_EXPIRY`, 00:30 UTC)
+and dispatched in `reminderWorker`. Renewal = a fresh engagement (D10, already
+possible via Phase 2 once ended). Verified via inject (8/8) incl. sweep selectivity.
+NOTE: "notify the other party" on end (D11) is Phase 6.
 **Deliverables**
 - `POST /engagements/:id/end` (client) + `POST /professional/engagements/:id/end`
   (pro) — either side ends → `status='ended'`, `endedAt`, `endedBy`; notify other
