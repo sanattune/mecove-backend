@@ -1,6 +1,6 @@
 # Plan — WhatsApp template messaging (OTP + professional-support notifications)
 
-**Status:** PENDING · **Urgency:** NOW · **Created:** 2026-06-23 · **Branch:** `<tbd>`
+**Status:** PENDING · **Urgency:** NOW · **Created:** 2026-06-23 · **Branch:** `whatsapp-messaging`
 > Tracked in [docs/plans/README.md]. Consolidates the former `plan_otp-whatsapp`
 > (now SUPERSEDED) and delivers professional-support **Phase 6** (notifications).
 > Two-stage: **(1) submit Meta templates NOW** (approval lead time) → **(2) build code
