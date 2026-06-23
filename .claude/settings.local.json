@@ -24,7 +24,23 @@
       "PowerShell(gh *)",
       "Bash(pnpm add *)",
       "Bash(pnpm generate:openapi)",
-      "Bash(pnpm tsc *)"
+      "Bash(pnpm tsc *)",
+      "Bash(docker compose *)",
+      "Bash(echo \"build exit: $?\")",
+      "Bash(echo \"tsc --noEmit exit: $?\")",
+      "Read(//tmp/**)",
+      "Bash(grep -n 'return \\\\`summary:' src/insight/keys.ts)",
+      "Bash(grep -n 'return \\\\`summary:' src/api/webhook/whatsappHandler.ts)",
+      "Bash(git mv *)",
+      "Bash(pnpm openapi:generate docs/openapi.yaml)",
+      "Bash(pnpm openapi:generate ../docs/specs/openapi.yaml)",
+      "Bash(timeout 540 ./gradlew compileDebugKotlin --console=plain)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "atlassian"
+  ]
 }
