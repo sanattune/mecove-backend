@@ -50,7 +50,7 @@ No test framework is currently configured.
 
 **Two entry points:**
 - `src/api/server.ts` — thin HTTP dispatcher: health check, CORS, routes to `webhook/` or `rest/`
-- `src/worker/worker.ts` — BullMQ worker processing reply and summary generation jobs
+- `src/worker/worker.ts` — BullMQ worker processing reply and insight generation jobs
 
 **API structure (`src/api/`):**
 - `webhook/whatsappHandler.ts` — all WhatsApp webhook logic (verification, message ingestion, button gates)
@@ -63,10 +63,10 @@ No test framework is currently configured.
 1. WhatsApp message arrives at `POST /webhooks/whatsapp`
 2. Server validates signature, upserts User/Identity, stores Message
 3. Any message starting with `/` is a **direct command** — bypasses batching entirely, enqueued to `replyQueue` with `mode: "command"`; see `src/commands/CLAUDE.md` for command routing details
-4. Interactive button replies (summary type, summary range, check-in time selection) are intercepted before the text guard via Redis pending-key gates. Summary intents pass through a two-step gate: type (SessionBridge / Myself, lately) → range (7/15/30 days).
+4. Interactive button replies (insight type, insight range, check-in time selection) are intercepted before the text guard via Redis pending-key gates. Insight intents pass through a two-step gate: type (SessionBridge / Myself, lately) → range (7/15/30 days).
 5. Regular text messages are batched in Redis (`replyBatch/state.ts`) with debounce (5s) and max-wait (15s)
 6. When batch flushes, worker runs the reply pipeline (`llm/ackReply.ts`) — see `src/llm/CLAUDE.md` for full classification and routing details
-7. If the decision includes `shouldGenerateSummary: true` or `shouldSetupCheckin: true`, the respective flow is triggered
+7. If the decision includes `shouldGenerateInsight: true` or `shouldSetupCheckin: true`, the respective flow is triggered
 
 **Message categories** (stored on `Message.category`):
 - `user_message` — default journal entry
@@ -77,18 +77,21 @@ No test framework is currently configured.
 **Key subsystems** (see `CLAUDE.md` in each directory for details):
 - `src/commands/` — slash command handling: registry, router, one file per command under user/ and admin/
 - `src/llm/` — LLM pipeline: classify/, reply/ack|greeting|guide/, context/, config, client
-- `src/summary/` — multi-stage report pipeline with two report types: `sessionbridge/` (therapist brief) and `myself-lately/` (self-reflection mirror). Shared infra at top, per-report code in subfolders. PDF generation + Redis key helpers.
+- `src/insight/` — multi-stage report pipeline with two report types: `sessionbridge/` (therapist brief) and `myself-lately/` (self-reflection mirror). Shared infra at top, per-report code in subfolders. PDF generation + Redis key helpers.
 - `src/infra/` — shared services: encryption, Prisma, Redis, WhatsApp client, PDF, logger
-- `src/queues/` — four BullMQ queues: summaryQueue, replyQueue, replyBatchQueue, reminderQueue
+- `src/queues/` — four BullMQ queues: insightQueue, replyQueue, replyBatchQueue, reminderQueue
 - `src/consent/` — YAML-configured consent gating flow
 - `src/replyBatch/` — Redis-based message batching with atomic lock for flush
-- `src/engagement/` — proactive messaging: checkin/ (reminders), nudge/ (inactivity), shared scheduler.ts
+- `src/engagement/` — proactive messaging: checkin/ (reminders), nudge/ (inactivity), shared scheduler.ts. NOTE: this is the inactivity/reminder subsystem — NOT the professional-support `Engagement` model (that's the Professional↔Client link).
+- `src/professional/` — professional-support domain services (e.g. `sharing.ts` — InsightShare grant logic shared by REST handlers and the worker's auto-send). See `docs/plans/plan_professional-support.md`.
 
 ## Database
 
 Prisma schema at `prisma/schema.prisma`. Config in `prisma.config.ts` (resolves DATABASE_URL or builds from DB_HOST/DB_USER/DB_PASSWORD/DB_NAME; auto-adds SSL for RDS).
 
-**Models:** User → Identity (channel binding) → Message. Summary links to User. UserSettings (1-to-1 with User, created eagerly) holds per-user preferences: `timezone`, `lastNudgedAt`. UserReminder holds scheduled check-ins per user. RefreshToken stores hashed mobile app refresh tokens with revocation support.
+**Models:** User → Identity (channel binding) → Message. Insight links to User. UserSettings (1-to-1 with User, created eagerly) holds per-user preferences: `timezone`, `lastNudgedAt`. UserReminder holds scheduled check-ins per user. RefreshToken stores hashed mobile app refresh tokens with revocation support.
+
+**Professional support** (professional-support plan, Phase 0+): `ProfessionalProfile` (1:N User; a User's Pro role, `User.isProfessional` is a denormalized flag), `Engagement` (Professional↔Client link, `pending|active|ended`, partial-unique one-active-per-pair), `InsightShare` (client grant of one Insight to one Engagement; access derives from `Engagement.status='active' AND revokedAt IS NULL`). See `docs/plans/plan_professional-support.md` + `docs/adr/0003`.
 
 **Identity channels:** `"whatsapp"` (WhatsApp users, gated by allowlist) and `"app"` (mobile app users, open sign-up). A user can have both. Message history queries use `userId` to span all channels.
 
@@ -100,13 +103,13 @@ Prisma schema at `prisma/schema.prisma`. Config in `prisma.config.ts` (resolves 
 
 Required (WhatsApp): `DATABASE_URL` (or `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`), `REDIS_URL`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_PERMANENT_TOKEN`, `GROQ_API_KEY` (or `OPENAI_API_KEY`), `CONSENT_CONFIG_PATH`, `ENCRYPTION_MASTER_KEY`.
 
-Required (REST/mobile): `JWT_SECRET`, `AWS_SNS_REGION` (default `ap-south-1`), AWS credentials (`AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` or IAM role).
+Required (REST/mobile): `JWT_SECRET`. OTP is delivered over WhatsApp (the `mecove_otp` template) — reuses `WHATSAPP_PHONE_NUMBER_ID` + `WHATSAPP_PERMANENT_TOKEN`; no SMS / AWS SNS (ADR-0005).
 
-Optional: `SENTRY_DSN`, `LOG_LEVEL` (default `info`), `CORS_ALLOWED_ORIGINS` (default `*`).
+Optional: `SENTRY_DSN`, `LOG_LEVEL` (default `info`), `CORS_ALLOWED_ORIGINS` (default `*`), `WHATSAPP_OTP_TEMPLATE_NAME`/`WHATSAPP_TEMPLATE_LANG` (override template constants), `OTP_DEV_MODE` (log OTP + skip send in dev).
 
 ## Build Notes
 
-- The build step copies non-TS assets to `dist/`: `src/llm/llm.yaml`, `src/summary/template/` (HTML, CSS, images), `src/summary/prompts/` (recursively, all `.md` prompt templates), `src/engagement/checkin/checkin.yaml`, `src/engagement/nudge/nudge.yaml`
+- The build step copies non-TS assets to `dist/`: `src/llm/llm.yaml`, `src/insight/template/` (HTML, CSS, images), `src/insight/prompts/` (recursively, all `.md` prompt templates), `src/engagement/checkin/checkin.yaml`, `src/engagement/nudge/nudge.yaml`
 - Prisma 7 uses `prisma.config.ts` for driver adapter configuration, not the standard `schema.prisma` generator block
 - Docker image installs system Chromium; local dev needs `npx puppeteer browsers install chrome`
 
@@ -123,3 +126,42 @@ Canonical defaults (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: `CONTEXT.md` and `docs/adr/` at repo root. See `docs/agents/domain.md`.
+
+## Docs
+
+Product-level docs have moved to the root workspace `docs/` folder (one level up from this repo). Do not add product specs, PRDs, or design docs here.
+
+**This repo's `docs/` contains only backend-specific material:**
+- `docs/adr/` — backend architecture decision records
+- `docs/plans/` — implementation plan docs + the master tracker (`README.md`); see **Plans convention** below
+- `docs/tech-design.md` — backend system design
+- `docs/openapi.yaml` — backend's own copy of the API spec (canonical is at `../docs/specs/openapi.yaml`)
+- `docs/aws-*.md` — AWS infrastructure and runbooks
+- `docs/response.md` — ack reply system implementation design
+- `docs/agents/` — agent skill configuration
+- `docs/test/` — test chatlogs and checklists
+- `docs/seed-generation.md` — seed data tooling
+- `docs/misc/` — **scratch drop-zone; do NOT read files here unless the user explicitly asks about a specific one** (see `docs/misc/README.md`)
+
+**Product docs are in the root workspace:**
+- PRD: `../docs/specs/meCove_PRD_v1.0.md`
+- OpenAPI (canonical): `../docs/specs/openapi.yaml`
+- Product concept: `../docs/product/concept.md`
+- Report design: `../docs/product/report-design.md`
+- Summary design: `../docs/product/summary-generation-design.md`
+- AI persona: `../docs/product/chat-persona-template.md`
+
+## Plans convention
+
+Detailed plan documents live in `docs/plans/`. **Never create `plan_*.md` files at the project
+root.** When writing a new plan, put it at `docs/plans/plan_<name>.md`.
+
+**Tracker is mandatory.** `docs/plans/README.md` is the master status index of every plan
+(Status + Urgency). Whenever you create a new plan, add a row for it to that tracker in the same
+change. Whenever a plan's status changes (shipped, superseded, abandoned, moved), update its row.
+A plan that is not in the tracker does not exist.
+
+**Use the template.** New plans start from `docs/plans/_TEMPLATE.md` (copy → fill). It carries a
+mandatory **Documentation impact** checklist — every plan must enumerate which docs it will
+create/update, filling each row with a path or an explicit "none + why". Docs are a deliverable
+of the plan, not an afterthought — a plan that ships code but not its docs is not shipped.

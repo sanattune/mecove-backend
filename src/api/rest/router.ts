@@ -1,10 +1,14 @@
 import type { FastifyInstance } from "fastify";
-import { authenticate } from "./middleware/auth";
+import { authenticate, requireProfessional, requireAdmin } from "./middleware/auth";
 import { handleRequestOtp, handleVerifyOtp, handleRefreshToken, handleLogout } from "./handlers/authHandler";
 import { handleGetMessages, handleSendMessage } from "./handlers/messageHandler";
-import { handleGenerateSummary, handleGetSummary, handleGetSummaryPdf } from "./handlers/summaryHandler";
+import { handleGenerateInsight, handleGetInsight, handleGetInsightPdf } from "./handlers/insightHandler";
 import { handleGetCheckin, handleSetupCheckin } from "./handlers/checkinHandler";
 import { handleGetStats, handleDeleteAccountData, handleGetPrivacy, handleAcceptPrivacy } from "./handlers/accountHandler";
+import { handleCreateProfessionalProfile, handleListProfessionalProfiles } from "./handlers/professionalHandler";
+import { handleCreateEngagement, handleListProfessionalEngagements, handleListClientEngagements, handleAcceptEngagement, handleEndEngagementByClient, handleEndEngagementByPro } from "./handlers/engagementHandler";
+import { handleShareInsight, handleUnshareInsight, handleSetAutoSend, handleListSharedInsights, handleGetSharedInsightPdf } from "./handlers/shareHandler";
+import { handleListProfilesForReview, handleSetVerificationStatus } from "./handlers/adminHandler";
 
 const S = {
   Error: {
@@ -23,6 +27,68 @@ const S = {
       timestamp: { type: "string", format: "date-time" },
     },
   },
+  ProfessionalProfile: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      professionalType: { type: "string", enum: ["therapist", "counsellor", "coach"] },
+      displayName: { type: "string" },
+      additionalTitle: { type: "string", nullable: true },
+      verificationStatus: { type: "string" },
+      createdAt: { type: "string", format: "date-time" },
+    },
+  },
+  Engagement: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      professionalId: { type: "string" },
+      status: { type: "string", enum: ["pending", "active", "ended"] },
+      startDate: { type: "string", format: "date-time", nullable: true },
+      endDate: { type: "string", format: "date-time", nullable: true },
+      autoSendSessionBridge: { type: "boolean" },
+      acceptedAt: { type: "string", format: "date-time", nullable: true },
+      endedAt: { type: "string", format: "date-time", nullable: true },
+      endedBy: { type: "string", nullable: true },
+      createdAt: { type: "string", format: "date-time" },
+      client: {
+        type: "object",
+        nullable: true,
+        properties: {
+          userId: { type: "string" },
+          phone: { type: "string", nullable: true },
+          displayName: { type: "string", nullable: true },
+        },
+      },
+      inviteePhone: { type: "string", nullable: true },
+    },
+  },
+  ClientEngagement: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      professionalId: { type: "string" },
+      status: { type: "string", enum: ["pending", "active", "ended"] },
+      startDate: { type: "string", format: "date-time", nullable: true },
+      endDate: { type: "string", format: "date-time", nullable: true },
+      autoSendSessionBridge: { type: "boolean" },
+      acceptedAt: { type: "string", format: "date-time", nullable: true },
+      endedAt: { type: "string", format: "date-time", nullable: true },
+      endedBy: { type: "string", nullable: true },
+      createdAt: { type: "string", format: "date-time" },
+      inviteePhone: { type: "string", nullable: true },
+      professional: {
+        type: "object",
+        properties: {
+          professionalId: { type: "string" },
+          displayName: { type: "string" },
+          professionalType: { type: "string" },
+          additionalTitle: { type: "string", nullable: true },
+          verificationStatus: { type: "string" },
+        },
+      },
+    },
+  },
 } as const;
 
 export async function restPlugin(app: FastifyInstance): Promise<void> {
@@ -36,7 +102,9 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
     try {
       done(null, JSON.parse(body as string));
     } catch (err) {
-      done(err as Error, undefined);
+      const parseError = err instanceof Error ? err : new Error("Invalid JSON body.");
+      (parseError as Error & { statusCode: number }).statusCode = 400;
+      done(parseError, undefined);
     }
   });
 
@@ -183,14 +251,14 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
     },
   }, handleSendMessage);
 
-  // ── Summary ───────────────────────────────────────────────────────────────────
+  // ── Insights ──────────────────────────────────────────────────────────────────
 
-  app.post("/summary/generate", {
+  app.post("/insights/generate", {
     onRequest: [authenticate],
     schema: {
-      tags: ["Summary"],
-      summary: "Request a report",
-      description: "Enqueues a report generation job. Returns a summaryId to poll. Only one report per user can be in progress at a time.",
+      tags: ["Insights"],
+      summary: "Request an insight",
+      description: "Enqueues an insight generation job. Returns an insightId to poll. Only one insight per user can be in progress at a time.",
       security: [{ BearerAuth: [] }],
       body: {
         type: "object",
@@ -201,24 +269,24 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
         },
       },
       response: {
-        202: { type: "object", properties: { summaryId: { type: "string" }, status: { type: "string" } } },
+        202: { type: "object", properties: { insightId: { type: "string" }, status: { type: "string" } } },
         401: S.Error,
         409: S.Error,
       },
     },
-  }, handleGenerateSummary);
+  }, handleGenerateInsight);
 
-  app.get<{ Params: { summaryId: string } }>("/summary/:summaryId", {
+  app.get<{ Params: { insightId: string } }>("/insights/:insightId", {
     onRequest: [authenticate],
     schema: {
-      tags: ["Summary"],
-      summary: "Get report status",
-      description: "Poll this after POST /summary/generate. Status progresses queued → processing → success | success_fallback | failed.",
+      tags: ["Insights"],
+      summary: "Get insight status",
+      description: "Poll this after POST /insights/generate. Status progresses queued → processing → success | success_fallback | failed.",
       security: [{ BearerAuth: [] }],
       params: {
         type: "object",
-        required: ["summaryId"],
-        properties: { summaryId: { type: "string" } },
+        required: ["insightId"],
+        properties: { insightId: { type: "string" } },
       },
       response: {
         200: {
@@ -226,7 +294,7 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
           properties: {
             id: { type: "string" },
             status: { type: "string", enum: ["queued", "processing", "success", "success_fallback", "failed"] },
-            reportType: { type: "string" },
+            insightType: { type: "string" },
             rangeStart: { type: "string", format: "date-time" },
             rangeEnd: { type: "string", format: "date-time" },
             createdAt: { type: "string", format: "date-time" },
@@ -236,19 +304,19 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
         404: S.Error,
       },
     },
-  }, handleGetSummary);
+  }, handleGetInsight);
 
-  app.get<{ Params: { summaryId: string } }>("/summary/:summaryId/pdf", {
+  app.get<{ Params: { insightId: string } }>("/insights/:insightId/pdf", {
     onRequest: [authenticate],
     schema: {
-      tags: ["Summary"],
-      summary: "Download report PDF",
-      description: "Returns the PDF bytes for a completed report. Only available once status is success or success_fallback.",
+      tags: ["Insights"],
+      summary: "Download insight PDF",
+      description: "Returns the PDF bytes for a completed insight. Only available once status is success or success_fallback.",
       security: [{ BearerAuth: [] }],
       params: {
         type: "object",
-        required: ["summaryId"],
-        properties: { summaryId: { type: "string" } },
+        required: ["insightId"],
+        properties: { insightId: { type: "string" } },
       },
       response: {
         200: { type: "string", format: "binary", description: "PDF file" },
@@ -256,7 +324,7 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
         404: S.Error,
       },
     },
-  }, handleGetSummaryPdf);
+  }, handleGetInsightPdf);
 
   // ── Checkin ───────────────────────────────────────────────────────────────────
 
@@ -322,7 +390,7 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
           properties: {
             messageCount: { type: "integer" },
             memberSince: { type: "string", format: "date-time", nullable: true },
-            lastReport: {
+            lastInsight: {
               nullable: true,
               type: "object",
               properties: {
@@ -341,8 +409,8 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
     onRequest: [authenticate],
     schema: {
       tags: ["Account"],
-      summary: "Delete all user data",
-      description: "Permanently deletes all messages and reports for the authenticated user. Cannot be undone.",
+      summary: "Delete my messages",
+      description: "Permanently deletes the authenticated user's chat messages. Generated insights are retained (so any professional-support engagements/shares stay valid). Cannot be undone.",
       security: [{ BearerAuth: [] }],
       response: {
         200: { type: "object", properties: { success: { type: "boolean" } } },
@@ -384,4 +452,255 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleAcceptPrivacy);
+
+  // ── Professional ──────────────────────────────────────────────────────────────
+
+  app.post("/professional/profiles", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Professional"],
+      summary: "Create a professional profile",
+      description: "Self-serve onboarding. Creates a ProfessionalProfile for the caller and marks them a professional. A user may hold several profiles (e.g. therapist and coach). Active immediately; verificationStatus starts 'pending'.",
+      security: [{ BearerAuth: [] }],
+      body: {
+        type: "object",
+        required: ["professionalType", "displayName"],
+        properties: {
+          professionalType: { type: "string", enum: ["therapist", "counsellor", "coach"] },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          additionalTitle: { type: "string", maxLength: 120 },
+        },
+      },
+      response: {
+        201: S.ProfessionalProfile,
+        400: S.Error,
+        401: S.Error,
+      },
+    },
+  }, handleCreateProfessionalProfile);
+
+  app.get("/professional/profiles", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Professional"],
+      summary: "List the caller's professional profiles",
+      description: "Returns the authenticated user's own professional profiles (empty array if none).",
+      security: [{ BearerAuth: [] }],
+      response: {
+        200: {
+          type: "object",
+          properties: { profiles: { type: "array", items: S.ProfessionalProfile } },
+        },
+        401: S.Error,
+      },
+    },
+  }, handleListProfessionalProfiles);
+
+  app.post("/professional/engagements", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "Open an engagement with a client",
+      description: "Pro-initiated. Identifies the client by E.164 phone: if an account exists it is linked (add); otherwise a pending invite is stored keyed by phone (invite), reconciled when that phone signs up. Always starts 'pending' — the client must accept. Rejects a duplicate pending/active engagement for the same pro↔client pair.",
+      security: [{ BearerAuth: [] }],
+      body: {
+        type: "object",
+        required: ["professionalId", "clientPhone"],
+        properties: {
+          professionalId: { type: "string", description: "One of the caller's professional profiles" },
+          clientPhone: { type: "string", description: "E.164, e.g. +919876543210" },
+          startDate: { type: "string", format: "date-time" },
+          endDate: { type: "string", format: "date-time" },
+        },
+      },
+      response: {
+        201: S.Engagement,
+        400: S.Error,
+        401: S.Error,
+        403: S.Error,
+        404: S.Error,
+        409: S.Error,
+      },
+    },
+  }, handleCreateEngagement);
+
+  app.get("/professional/engagements", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "List the caller's engagements",
+      description: "All engagements across the caller's professional profiles, newest first. Linked client profile (phone, name) is included once an account is attached.",
+      security: [{ BearerAuth: [] }],
+      response: {
+        200: {
+          type: "object",
+          properties: { engagements: { type: "array", items: S.Engagement } },
+        },
+        401: S.Error,
+        403: S.Error,
+      },
+    },
+  }, handleListProfessionalEngagements);
+
+  app.post<{ Params: { engagementId: string } }>("/professional/engagements/:engagementId/end", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "End an engagement (professional)",
+      description: "Professional ends the engagement (D11). Status -> ended, endedBy=professional. The client's access-granting shares stop resolving immediately (derived). 409 if already ended.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      response: { 200: S.Engagement, 401: S.Error, 403: S.Error, 404: S.Error, 409: S.Error },
+    },
+  }, handleEndEngagementByPro);
+
+  // ── Engagement (client side) ───────────────────────────────────────────────────
+
+  app.get("/engagements", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "List my engagements (as a client)",
+      description: "The caller's engagements with professionals — pending (to accept), active, and ended — newest first, each with the professional's profile.",
+      security: [{ BearerAuth: [] }],
+      response: {
+        200: {
+          type: "object",
+          properties: { engagements: { type: "array", items: S.ClientEngagement } },
+        },
+        401: S.Error,
+      },
+    },
+  }, handleListClientEngagements);
+
+  app.post<{ Params: { engagementId: string } }>("/engagements/:engagementId/accept", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "Accept a pending engagement",
+      description: "The client's consent gate (D5). Moves a pending engagement to active. No client data flows to the professional until this is done. 409 if the engagement is not pending or an active one with that professional already exists.",
+      security: [{ BearerAuth: [] }],
+      params: {
+        type: "object",
+        required: ["engagementId"],
+        properties: { engagementId: { type: "string" } },
+      },
+      response: {
+        200: S.ClientEngagement,
+        401: S.Error,
+        404: S.Error,
+        409: S.Error,
+      },
+    },
+  }, handleAcceptEngagement);
+
+  app.post<{ Params: { engagementId: string } }>("/engagements/:engagementId/end", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "End an engagement (client)",
+      description: "Client ends the engagement (D11) — from pending (decline) or active. Status -> ended, endedBy=client. The professional loses access immediately (derived). 409 if already ended.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      response: { 200: S.ClientEngagement, 401: S.Error, 404: S.Error, 409: S.Error },
+    },
+  }, handleEndEngagementByClient);
+
+  app.post<{ Params: { engagementId: string } }>("/engagements/:engagementId/shares", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "Share an insight with this engagement",
+      description: "Client discloses one of their own insights (any type) to an active engagement. The professional can then read it; no raw journal, no pull. Re-sharing a previously-unshared insight reactivates it.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      body: { type: "object", required: ["insightId"], properties: { insightId: { type: "string" } } },
+      response: {
+        201: { type: "object", properties: { id: { type: "string" }, engagementId: { type: "string" }, insightId: { type: "string" }, sharedAt: { type: "string", format: "date-time" }, revokedAt: { type: "string", format: "date-time", nullable: true }, autoSent: { type: "boolean" } } },
+        400: S.Error, 401: S.Error, 404: S.Error, 409: S.Error,
+      },
+    },
+  }, handleShareInsight);
+
+  app.delete<{ Params: { engagementId: string; insightId: string } }>("/engagements/:engagementId/shares/:insightId", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "Unshare an insight",
+      description: "Client revokes a single shared insight (sets revokedAt); the engagement and other shares are untouched. Idempotent.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId", "insightId"], properties: { engagementId: { type: "string" }, insightId: { type: "string" } } },
+      response: { 200: { type: "object", properties: { success: { type: "boolean" } } }, 401: S.Error, 404: S.Error },
+    },
+  }, handleUnshareInsight);
+
+  app.put<{ Params: { engagementId: string } }>("/engagements/:engagementId/auto-send", {
+    onRequest: [authenticate],
+    schema: {
+      tags: ["Engagement"],
+      summary: "Toggle auto-send of SessionBridge insights",
+      description: "When enabled, new SessionBridge insights the client generates are automatically shared with this engagement. Future insights only.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      body: { type: "object", required: ["enabled"], properties: { enabled: { type: "boolean" } } },
+      response: { 200: { type: "object", properties: { engagementId: { type: "string" }, autoSendSessionBridge: { type: "boolean" } } }, 400: S.Error, 401: S.Error, 404: S.Error, 409: S.Error },
+    },
+  }, handleSetAutoSend);
+
+  app.get<{ Params: { engagementId: string } }>("/professional/engagements/:engagementId/insights", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "List insights shared on an engagement",
+      description: "Insights the client has shared and not revoked, only while the engagement is active (access is derived — ending the engagement cuts access). Metadata only.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId"], properties: { engagementId: { type: "string" } } },
+      response: {
+        200: { type: "object", properties: { insights: { type: "array", items: { type: "object", properties: { insightId: { type: "string" }, insightType: { type: "string" }, status: { type: "string" }, rangeStart: { type: "string", format: "date-time" }, rangeEnd: { type: "string", format: "date-time" }, createdAt: { type: "string", format: "date-time" }, sharedAt: { type: "string", format: "date-time" }, autoSent: { type: "boolean" } } } } } },
+        401: S.Error, 403: S.Error, 404: S.Error,
+      },
+    },
+  }, handleListSharedInsights);
+
+  app.get<{ Params: { engagementId: string; insightId: string } }>("/professional/engagements/:engagementId/insights/:insightId/pdf", {
+    onRequest: [authenticate, requireProfessional],
+    schema: {
+      tags: ["Professional"],
+      summary: "Download a shared insight PDF",
+      description: "PDF of a shared insight, gated by the same derived access (active engagement + non-revoked share).",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["engagementId", "insightId"], properties: { engagementId: { type: "string" }, insightId: { type: "string" } } },
+      response: { 200: { type: "string", format: "binary", description: "PDF file" }, 401: S.Error, 403: S.Error, 404: S.Error },
+    },
+  }, handleGetSharedInsightPdf);
+
+  // ── Admin ──────────────────────────────────────────────────────────────────────
+
+  app.get<{ Querystring: { status?: string } }>("/admin/professional-profiles", {
+    onRequest: [authenticate, requireAdmin],
+    schema: {
+      tags: ["Admin"],
+      summary: "List professional profiles for verification review",
+      description: "Team-only. Optional ?status=pending|verified|rejected filter. Includes the owner's phone + name.",
+      security: [{ BearerAuth: [] }],
+      querystring: { type: "object", properties: { status: { type: "string", enum: ["pending", "verified", "rejected"] } } },
+      response: {
+        200: { type: "object", properties: { profiles: { type: "array", items: { type: "object", additionalProperties: true } } } },
+        400: S.Error, 401: S.Error, 403: S.Error,
+      },
+    },
+  }, handleListProfilesForReview);
+
+  app.patch<{ Params: { profileId: string } }>("/admin/professional-profiles/:profileId/verification", {
+    onRequest: [authenticate, requireAdmin],
+    schema: {
+      tags: ["Admin"],
+      summary: "Set a professional profile's verification status",
+      description: "Team-only async trust badge (D15) — non-blocking; client-accept is the real gate. Sets verificationStatus to pending|verified|rejected.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["profileId"], properties: { profileId: { type: "string" } } },
+      body: { type: "object", required: ["verificationStatus"], properties: { verificationStatus: { type: "string", enum: ["pending", "verified", "rejected"] } } },
+      response: { 200: S.ProfessionalProfile, 400: S.Error, 401: S.Error, 403: S.Error, 404: S.Error },
+    },
+  }, handleSetVerificationStatus);
 }

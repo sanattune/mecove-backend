@@ -4,10 +4,10 @@ import { prisma } from "../infra/prisma";
 import { logger } from "../infra/logger";
 import { getRedis } from "../infra/redis";
 import {
-  SUMMARY_QUEUE_NAME,
-  JOB_NAME_GENERATE_SUMMARY,
-  type GenerateSummaryPayload,
-} from "../queues/summaryQueue";
+  INSIGHT_QUEUE_NAME,
+  JOB_NAME_GENERATE_INSIGHT,
+  type GenerateInsightPayload,
+} from "../queues/insightQueue";
 import {
   REPLY_QUEUE_NAME,
   JOB_NAME_GENERATE_REPLY,
@@ -29,14 +29,17 @@ import {
   sendWhatsAppReply,
   sendWhatsAppTypingIndicator,
 } from "../infra/whatsapp";
-import { buildWindowBundle } from "../summary/windowBuilder";
-import { buildMinimalFallbackReport } from "../summary/sessionbridge/assembler";
-import { generateSummaryPipeline } from "../summary/pipeline";
-import { summaryLockKey, summaryTypePromptKey } from "../summary/keys";
+import { buildWindowBundle } from "../insight/windowBuilder";
+import { buildMinimalFallbackReport } from "../insight/sessionbridge/assembler";
+import { generateInsightPipeline } from "../insight/pipeline";
+import { autoShareSessionBridgeInsight } from "../professional/sharing";
+import { expireDueEngagements, startEngagementExpiryScheduler } from "../professional/lifecycle";
+import { insightLockKey, insightTypePromptKey } from "../insight/keys";
 import {
   REMINDER_QUEUE_NAME,
   JOB_NAME_SCAN_REMINDERS,
   JOB_NAME_SCAN_NUDGES,
+  JOB_NAME_SCAN_ENGAGEMENT_EXPIRY,
   reminderQueue,
   type ScanRemindersPayload,
 } from "../queues/reminderQueue";
@@ -76,25 +79,25 @@ if (!hasDatabaseUrl && !hasDatabaseParts) {
   );
 }
 
-const SUMMARY_LOCK_TTL_SECONDS = 15 * 60;
-const SUMMARY_ALREADY_RUNNING_TEXT =
-  "Your previous summary is still being generated. Please wait.";
-const SUMMARY_TIMEOUT_TEXT = "Summary generation timed out. Please request again.";
+const INSIGHT_LOCK_TTL_SECONDS = 15 * 60;
+const INSIGHT_ALREADY_RUNNING_TEXT =
+  "Your previous insight is still being generated. Please wait.";
+const INSIGHT_TIMEOUT_TEXT = "Insight generation timed out. Please request again.";
 const BUSY_NOTICE_TEXT =
   "Please wait, I am processing your previous message. Retry command in a moment.";
 
-const SUMMARY_PROMPT_TTL_SECONDS = 10 * 60;
-const SUMMARY_TYPE_PROMPT_TEXT =
+const INSIGHT_PROMPT_TTL_SECONDS = 10 * 60;
+const INSIGHT_TYPE_PROMPT_TEXT =
   "Looks like you'd like a report. Pick the kind. \"SessionBridge\" is a neutral brief of what you logged \u2014 good to share with a therapist or coach. \"Myself, lately\" is your own words mirrored back, grouped by theme. If you didn't mean to ask, just keep chatting \u2014 no report will be generated unless you press a button.";
-const SUMMARY_TYPE_BUTTONS: Array<{ id: string; title: string }> = [
-  { id: "summary_type_sessionbridge", title: "SessionBridge" },
-  { id: "summary_type_myself_lately", title: "Myself, lately" },
+const INSIGHT_TYPE_BUTTONS: Array<{ id: string; title: string }> = [
+  { id: "insight_type_sessionbridge", title: "SessionBridge" },
+  { id: "insight_type_myself_lately", title: "Myself, lately" },
 ];
 
 type BatchDueReason = "quiet" | "max_cap";
 
-async function sendSummaryTypePrompts(channelUserKey: string): Promise<void> {
-  await sendWhatsAppButtons(channelUserKey, SUMMARY_TYPE_PROMPT_TEXT, SUMMARY_TYPE_BUTTONS);
+async function sendInsightTypePrompts(channelUserKey: string): Promise<void> {
+  await sendWhatsAppButtons(channelUserKey, INSIGHT_TYPE_PROMPT_TEXT, INSIGHT_TYPE_BUTTONS);
 }
 
 function parseCommand(messageText: string): string | null {
@@ -134,29 +137,29 @@ async function enqueueBatchFlush(userId: string, seq: number, delayMs: number): 
   );
 }
 
-async function handleSummaryIntent(input: {
+async function handleInsightIntent(input: {
   userId: string;
   channelUserKey: string;
 }): Promise<{ kind: "text"; replyText: string } | { kind: "buttons"; replyText: string }> {
   const redis = getRedis();
 
-  const lockKey = summaryLockKey(input.userId);
+  const lockKey = insightLockKey(input.userId);
   const inflight = await redis.get(lockKey);
   if (inflight) {
-    return { kind: "text", replyText: SUMMARY_ALREADY_RUNNING_TEXT };
+    return { kind: "text", replyText: INSIGHT_ALREADY_RUNNING_TEXT };
   }
 
-  await redis.set(summaryTypePromptKey(input.userId), "0", "EX", SUMMARY_PROMPT_TTL_SECONDS);
-  await sendSummaryTypePrompts(input.channelUserKey);
-  return { kind: "buttons", replyText: SUMMARY_TYPE_PROMPT_TEXT };
+  await redis.set(insightTypePromptKey(input.userId), "0", "EX", INSIGHT_PROMPT_TTL_SECONDS);
+  await sendInsightTypePrompts(input.channelUserKey);
+  return { kind: "buttons", replyText: INSIGHT_TYPE_PROMPT_TEXT };
 }
 
-// Summary worker
-const summaryWorker = new Worker<GenerateSummaryPayload>(
-  SUMMARY_QUEUE_NAME,
+// Insight worker
+const insightWorker = new Worker<GenerateInsightPayload>(
+  INSIGHT_QUEUE_NAME,
   async (job) => {
-    if (job.name !== JOB_NAME_GENERATE_SUMMARY) return;
-    const { userId, channelUserKey, range, reportType, channel = "whatsapp", summaryId: preCreatedSummaryId } = job.data;
+    if (job.name !== JOB_NAME_GENERATE_INSIGHT) return;
+    const { userId, channelUserKey, range, insightType, channel = "whatsapp", insightId: preCreatedInsightId } = job.data;
 
     const windowDays =
       range === "last_7_days"
@@ -169,16 +172,16 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
     if (!windowDays) return;
 
     const redis = getRedis();
-    const lockKey = summaryLockKey(userId);
-    let summaryId: string | null = preCreatedSummaryId ?? null;
+    const lockKey = insightLockKey(userId);
+    let insightId: string | null = preCreatedInsightId ?? null;
     let windowBundle: Awaited<ReturnType<typeof buildWindowBundle>> | null = null;
 
     try {
       windowBundle = await buildWindowBundle(userId, "Asia/Kolkata", new Date(), windowDays);
 
-      if (summaryId) {
-        await prisma.summary.update({
-          where: { id: summaryId },
+      if (insightId) {
+        await prisma.insight.update({
+          where: { id: insightId },
           data: {
             rangeStart: new Date(windowBundle.rangeStartUtc),
             rangeEnd: new Date(windowBundle.rangeEndUtc),
@@ -188,7 +191,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
           },
         });
       } else {
-        const summary = await prisma.summary.create({
+        const insight = await prisma.insight.create({
           data: {
             userId,
             rangeStart: new Date(windowBundle.rangeStartUtc),
@@ -196,37 +199,37 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
             status: "processing",
             inputMessagesCount: windowBundle.counts.totalMessages,
             inputHash: windowBundle.inputHash,
-            reportType,
+            insightType,
             channel,
           },
         });
-        summaryId = summary.id;
+        insightId = insight.id;
       }
 
-      const result = await generateSummaryPipeline({
+      const result = await generateInsightPipeline({
         userId,
-        summaryId,
+        insightId,
         timezone: "Asia/Kolkata",
         windowBundle,
-        reportType,
+        insightType,
       });
 
       if (channel === "whatsapp") {
         const filenamePrefix =
-          reportType === "myself_lately" ? "myself-lately" : "sessionbridge";
+          insightType === "myself_lately" ? "myself-lately" : "sessionbridge";
         const filename = `${filenamePrefix}-${windowBundle.window.endDate}.pdf`;
         const caption =
-          reportType === "myself_lately"
+          insightType === "myself_lately"
             ? "Your last days, mirrored back."
             : "Your summary is ready.";
         await sendWhatsAppDocument(channelUserKey, result.pdfBytes, filename, caption);
       }
 
-      await prisma.summary.update({
-        where: { id: summaryId },
+      await prisma.insight.update({
+        where: { id: insightId },
         data: {
           status: "success",
-          summaryText: result.finalReportText,
+          insightText: result.finalReportText,
           modelName: result.modelName,
           promptVersion: result.promptVersionString,
           inputMessagesCount: windowBundle.counts.totalMessages,
@@ -235,11 +238,22 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
           ...(channel === "app" && { pdfBytes: result.pdfBytes as unknown as Uint8Array<ArrayBuffer> }),
         },
       });
+
+      // Auto-send (D28): push a completed SessionBridge to active engagements that
+      // opted in. Non-fatal — sharing failure must not fail the generation job.
+      if (insightType === "sessionbridge") {
+        try {
+          const shared = await autoShareSessionBridgeInsight(insightId, userId);
+          if (shared > 0) logger.info("auto-shared SessionBridge insight", { insightId, userId, shared });
+        } catch (shareErr) {
+          logger.error("auto-share failed", { insightId, userId, error: shareErr instanceof Error ? shareErr.message : String(shareErr) });
+        }
+      }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      logger.error("summary generation failed", {
+      logger.error("insight generation failed", {
         userId,
-        summaryId,
+        insightId,
         error: reason,
       });
 
@@ -260,12 +274,12 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
           );
         }
 
-        if (summaryId) {
-          await prisma.summary.update({
-            where: { id: summaryId },
+        if (insightId) {
+          await prisma.insight.update({
+            where: { id: insightId },
             data: {
               status: "success_fallback",
-              summaryText: fallback.reportText,
+              insightText: fallback.reportText,
               modelName: null,
               promptVersion: "fallback_v1",
               inputMessagesCount: windowBundle.counts.totalMessages,
@@ -275,13 +289,13 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
             },
           });
         } else {
-          await prisma.summary.create({
+          await prisma.insight.create({
             data: {
               userId,
               rangeStart: new Date(windowBundle.rangeStartUtc),
               rangeEnd: new Date(windowBundle.rangeEndUtc),
               status: "success_fallback",
-              summaryText: fallback.reportText,
+              insightText: fallback.reportText,
               promptVersion: "fallback_v1",
               inputMessagesCount: windowBundle.counts.totalMessages,
               inputHash: windowBundle.inputHash,
@@ -292,21 +306,21 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
         }
         fallbackSent = true;
       } catch (fallbackErr) {
-        logger.error("fallback summary generation failed", {
+        logger.error("fallback insight generation failed", {
           userId,
-          summaryId,
+          insightId,
           error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
         });
       }
 
       if (!fallbackSent) {
-        if (summaryId) {
-          await prisma.summary.update({
-            where: { id: summaryId },
+        if (insightId) {
+          await prisma.insight.update({
+            where: { id: insightId },
             data: { status: "failed", error: reason },
           });
         } else if (windowBundle) {
-          await prisma.summary.create({
+          await prisma.insight.create({
             data: {
               userId,
               rangeStart: new Date(windowBundle.rangeStartUtc),
@@ -322,7 +336,7 @@ const summaryWorker = new Worker<GenerateSummaryPayload>(
           const now = new Date();
           const rangeStart = new Date(now);
           rangeStart.setDate(rangeStart.getDate() - 15);
-          await prisma.summary.create({
+          await prisma.insight.create({
             data: { userId, rangeStart, rangeEnd: now, status: "failed", error: reason, channel },
           });
         }
@@ -482,7 +496,7 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
       const isAdminBatchUser = batchUser?.role === "admin";
 
       let replyText = "Got it.";
-      let shouldGenerateSummary = false;
+      let shouldGenerateInsight = false;
       let shouldSetupCheckin = false;
       let decisionClassifierType: string | undefined;
       try {
@@ -490,12 +504,12 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
         if (decision.replyText.trim().length > 0) {
           replyText = decision.replyText.trim();
         }
-        shouldGenerateSummary = decision.shouldGenerateSummary;
+        shouldGenerateInsight = decision.shouldGenerateInsight;
         shouldSetupCheckin = decision.shouldSetupCheckin ?? false;
         decisionClassifierType = decision.classifierType;
-        logger.info("ack decision summary flag", {
+        logger.info("ack decision insight flag", {
           userId,
-          shouldGenerateSummary,
+          shouldGenerateInsight,
           shouldSetupCheckin,
           batchMessageCount: combinedText ? combinedText.split(/\n/).length : 0,
         });
@@ -515,7 +529,7 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
           where: { id: { in: claimedBatch.ids } },
           data: { category: "command_reply" },
         });
-      } else if (shouldGenerateSummary) {
+      } else if (shouldGenerateInsight) {
         // Label the latest message in the batch as a summary request so it is
         // excluded from future report windows.
         const latestBatchMsgId = messages[messages.length - 1]?.id;
@@ -526,7 +540,7 @@ const replyBatchWorker = new Worker<FlushReplyBatchPayload>(
           });
         }
 
-        const result = await handleSummaryIntent({
+        const result = await handleInsightIntent({
           userId,
           channelUserKey: claimedBatch.meta.channelUserKey,
         });
@@ -602,6 +616,8 @@ const reminderWorker = new Worker<ScanRemindersPayload>(
       await processReminderScan();
     } else if (job.name === JOB_NAME_SCAN_NUDGES) {
       await processNudgeScan();
+    } else if (job.name === JOB_NAME_SCAN_ENGAGEMENT_EXPIRY) {
+      await expireDueEngagements();
     }
   },
   {
@@ -632,21 +648,21 @@ replyBatchWorker.on("failed", (job, err) => {
   });
 });
 
-summaryWorker.on("failed", (job, err) => {
+insightWorker.on("failed", (job, err) => {
   const userId = job?.data?.userId;
   const channelUserKey = job?.data?.channelUserKey;
   if (userId) {
-    void getRedis().del(summaryLockKey(userId));
+    void getRedis().del(insightLockKey(userId));
   }
   if (channelUserKey && /timed out/i.test(err.message)) {
-    void sendWhatsAppReply(channelUserKey, SUMMARY_TIMEOUT_TEXT).catch((sendErr) => {
-      logger.error("failed to send summary timeout notification", {
+    void sendWhatsAppReply(channelUserKey, INSIGHT_TIMEOUT_TEXT).catch((sendErr) => {
+      logger.error("failed to send insight timeout notification", {
         jobId: job?.id,
         error: sendErr instanceof Error ? sendErr.message : String(sendErr),
       });
     });
   }
-  logger.error("summary job failed", {
+  logger.error("insight job failed", {
     jobId: job?.id,
     error: err.message,
   });
@@ -654,7 +670,7 @@ summaryWorker.on("failed", (job, err) => {
 
 async function shutdown() {
   await Promise.all([
-    summaryWorker.close(),
+    insightWorker.close(),
     replyWorker.close(),
     replyBatchWorker.close(),
     reminderWorker.close(),
@@ -668,5 +684,6 @@ process.on("SIGINT", shutdown);
 
 void startReminderScheduler(reminderQueue);
 void startNudgeScheduler(reminderQueue);
+void startEngagementExpiryScheduler(reminderQueue);
 
-logger.info("worker started (summary + reply + reply_batch + reminder queues)");
+logger.info("worker started (insight + reply + reply_batch + reminder queues)");

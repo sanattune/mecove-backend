@@ -34,7 +34,7 @@ The classifier result is returned as `classifierType` on `AckDecision` and persi
   - 3+ days: warm "it's been a while" template (no LLM)
 - **`closing`** → direct classifier reply. Prompt enforces time-neutral phrasing (no "Good night/morning/evening") and instructs the LLM to vary naturally — examples in the prompt are illustrative only.
 - **`trivial`** → classifier reply with ack phrase rotation
-- **`summary_request`** → ack phrase + triggers summary pipeline
+- **`summary_request`** → ack phrase + triggers insight pipeline
 - **`setup_checkin`** → sets `shouldSetupCheckin: true` on `AckDecision`; worker calls `handleCheckinIntent()` to send time-selection buttons, then tags all messages in the batch as `command_reply` so they're excluded from future LLM context
 - **`guide_query`** → `guideReply.ts` — answers using guide content
 - **`journal_entry`** → Stage 2 full ACK_PROMPT

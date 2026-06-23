@@ -19,7 +19,7 @@ COPY src ./src
 RUN pnpm prisma generate
 RUN pnpm build
 RUN cp src/llm/llm.yaml dist/llm/llm.yaml
-RUN mkdir -p dist/summary/template/images && cp src/summary/template/sessionbridge-report.html src/summary/template/styles.css dist/summary/template/ && cp src/summary/template/images/* dist/summary/template/images/ 2>/dev/null || true
+RUN mkdir -p dist/insight/template/images && cp src/insight/template/sessionbridge-report.html src/insight/template/styles.css dist/insight/template/ && cp src/insight/template/images/* dist/insight/template/images/ 2>/dev/null || true
 RUN pnpm prune --prod
 
 FROM node:20-slim AS runtime
@@ -45,7 +45,7 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/consent.config.yaml ./
 COPY --from=build /app/mvp-access.config.yaml ./
-COPY --from=build /app/dist/summary/template ./dist/summary/template
+COPY --from=build /app/dist/insight/template ./dist/insight/template
 
 # Prisma CLI may need to download/write engine binaries at runtime (e.g., during migrations).
 # Ensure the non-root `node` user can write to /app (including node_modules).

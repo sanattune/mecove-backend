@@ -14,7 +14,7 @@ export type SaveStatus = "saved" | "save_failed";
 
 export type AckDecision = {
   replyText: string;
-  shouldGenerateSummary: boolean;
+  shouldGenerateInsight: boolean;
   shouldGenerateReport?: boolean;
   shouldSetupCheckin?: boolean;
   classifierType?: string;
@@ -83,7 +83,7 @@ const ACK_PROMPT = `You are MeCove's WhatsApp reply engine.
 
 You must output:
 1) replyText: a short, human reply to the user's latest message batch
-2) shouldGenerateSummary: a boolean for whether to generate a summary now
+2) shouldGenerateInsight: a boolean for whether to generate a summary now
 
 Inputs you will receive:
 - SAVE_STATUS: "saved" | "save_failed"
@@ -95,7 +95,7 @@ Inputs you will receive:
 
 Absolute output rules:
 - Return ONLY a single-line JSON object with this exact schema:
-  {"replyText":"<text>","shouldGenerateSummary":<true|false>}
+  {"replyText":"<text>","shouldGenerateInsight":<true|false>}
 - No markdown, no code fences, no extra keys, no commentary.
 - Never output partial JSON. If unsure, output the simplest valid JSON with a short replyText.
 - replyText must be one line (no line breaks) and never empty.
@@ -125,13 +125,13 @@ If SAVE_STATUS is "save_failed":
 - Do not add observations or invitations.
 
 4) Summary decision:
-Set shouldGenerateSummary = true ONLY when the user is explicitly requesting a new summary/report/recap to be generated or sent now.
+Set shouldGenerateInsight = true ONLY when the user is explicitly requesting a new summary/report/recap to be generated or sent now.
 The product name for the summary report is "SessionBridge report" — treat "sessionbridge", "session bridge", "sessionbridge report", or "session bridge report" as equivalent to asking for a summary/report.
 Examples that should set true: "summarize", "send my summary", "generate my report", "give me my recap", "regenerate the summary", "I need my summary", "send me my sessionbridge report", "generate my session bridge report", "sessionbridge", "session bridge".
 Counterexamples that MUST be false (feedback, not a request): "Nice report but it's empty", "the report is empty", "thanks for the report", "good report", "nice sessionbridge report".
 If the user both gives feedback AND asks to regenerate (e.g. "Nice report but it's empty, can you regenerate?"), set true.
 The system will then ask the user to pick a report range (7/15/30 days) via buttons and generate/send the report; you do not need to say you cannot do it - set the flag true and your replyText will be ignored.
-Otherwise shouldGenerateSummary = false.
+Otherwise shouldGenerateInsight = false.
 
 5) Core role and question-handling (semantic; use your own words):
 MeCove is a listening space — a quiet place where users capture thoughts, feelings, and moments without pressure. Being brief and non-chatty is a deliberate choice; MeCove is designed to stay out of the way, not to hook users into a conversation.
@@ -187,41 +187,41 @@ Write a fresh reply in your own words each time, and do not repeat wording found
 Example A (advice/solution question):
 User batch: "Why am I feeling lazy when I wake up?"
 Good output:
-{"replyText":"Got it. MeCove is for capturing what you're feeling rather than giving advice - what was your sleep like last night?","shouldGenerateSummary":false}
+{"replyText":"Got it. MeCove is for capturing what you're feeling rather than giving advice - what was your sleep like last night?","shouldGenerateInsight":false}
 
 Example B (diagnosis/explanation question):
 User batch: "What's wrong with me?"
 Good output:
-{"replyText":"I hear you. I can't diagnose, but we can capture what you're noticing here - what changed recently?","shouldGenerateSummary":false}
+{"replyText":"I hear you. I can't diagnose, but we can capture what you're noticing here - what changed recently?","shouldGenerateInsight":false}
 
 Example C (new topic, LAST_BOT_REPLY_WAS_QUESTION=false — ask a light question):
 User batch: "I'm feeling very scared."
 Good output:
-{"replyText":"That sounds scary. What's going on right now?","shouldGenerateSummary":false}
+{"replyText":"That sounds scary. What's going on right now?","shouldGenerateInsight":false}
 
 Example C2 (user answering bot's question, LAST_BOT_REPLY_WAS_QUESTION=true — just acknowledge):
 LAST_BOT_REPLY: "Bot: That sounds scary. What's going on right now?"
 User batch: "I have an exam tomorrow and I haven't studied at all."
 Good output:
-{"replyText":"Got it. That's a lot of pressure.","shouldGenerateSummary":false}
+{"replyText":"Got it. That's a lot of pressure.","shouldGenerateInsight":false}
 
 Example C3 (routine journal entry, ack only — no question):
 User batch: "Had a long day at work. Tired."
 Good output:
-{"replyText":"Got it.","shouldGenerateSummary":false}
+{"replyText":"Got it.","shouldGenerateInsight":false}
 
 Example E (repetition complaint):
 User batch: "You keep saying the same thing."
 Good output:
-{"replyText":"You're right. Got it - if it helps, tell me what happened right before you started feeling this way.","shouldGenerateSummary":false}
+{"replyText":"You're right. Got it - if it helps, tell me what happened right before you started feeling this way.","shouldGenerateInsight":false}
 
 Example F (safety — first time): User expresses self-harm; encourage help once.
-Example G (safety — user continues talking about it): If RECENT_BOT_REPLIES already encouraged help, do NOT say "seek help" again; just reflect. e.g. User: "I still can't stop thinking about it." Good: {"replyText":"That's a lot to sit with.","shouldGenerateSummary":false} — reflect only. Occasionally (every few exchanges) add a brief reminder to reach out to someone or a helpline.
+Example G (safety — user continues talking about it): If RECENT_BOT_REPLIES already encouraged help, do NOT say "seek help" again; just reflect. e.g. User: "I still can't stop thinking about it." Good: {"replyText":"That's a lot to sit with.","shouldGenerateInsight":false} — reflect only. Occasionally (every few exchanges) add a brief reminder to reach out to someone or a helpline.
 
-Example H2 (feedback about report, no request — shouldGenerateSummary false):
+Example H2 (feedback about report, no request — shouldGenerateInsight false):
 User batch: "Nice report but it's empty."
 Good output:
-{"replyText":"Got it. Tell me a bit more about what you expected to see in it.","shouldGenerateSummary":false}
+{"replyText":"Got it. Tell me a bit more about what you expected to see in it.","shouldGenerateInsight":false}
 
 Now produce the JSON.
 
@@ -269,29 +269,33 @@ function parseAckDecision(raw: string): AckDecision {
   }
 
   try {
-    const parsed = JSON.parse(candidate) as Partial<AckDecision>;
+    const parsed = JSON.parse(candidate) as Partial<AckDecision> & {
+      shouldGenerateSummary?: boolean;
+    };
     const replyText =
       typeof parsed.replyText === "string" && parsed.replyText.trim().length > 0
         ? parsed.replyText.trim()
         : FALLBACK_REPLY;
-    const shouldGenerateSummary =
-      parsed.shouldGenerateSummary === true || parsed.shouldGenerateReport === true;
-    return { replyText, shouldGenerateSummary };
+    const shouldGenerateInsight =
+      parsed.shouldGenerateInsight === true ||
+      parsed.shouldGenerateSummary === true ||
+      parsed.shouldGenerateReport === true;
+    return { replyText, shouldGenerateInsight };
   } catch {
     // Fallback: if output looks like malformed JSON, do not leak it to the user.
     const looksLikeJsonLeak =
       trimmed.startsWith("{") ||
       trimmed.includes("```") ||
-      /"replyText"\s*:|"shouldGenerateSummary"\s*:/.test(trimmed);
+      /"replyText"\s*:|"shouldGenerate(Insight|Summary)"\s*:/.test(trimmed);
 
     if (looksLikeJsonLeak) {
-      return { replyText: FALLBACK_REPLY, shouldGenerateSummary: false };
+      return { replyText: FALLBACK_REPLY, shouldGenerateInsight: false };
     }
 
-    // Backward-compatible fallback: treat raw text as reply and do not trigger summary.
+    // Backward-compatible fallback: treat raw text as reply and do not trigger insight.
     return {
       replyText: trimmed.length > 0 ? trimmed : FALLBACK_REPLY,
-      shouldGenerateSummary: false,
+      shouldGenerateInsight: false,
     };
   }
 }
@@ -343,7 +347,7 @@ export async function generateAckDecision(
   if (saveStatus === "save_failed") {
     return {
       replyText: "Your message could not be saved. Please try again in a bit.",
-      shouldGenerateSummary: false,
+      shouldGenerateInsight: false,
     };
   }
 
@@ -396,43 +400,43 @@ export async function generateAckDecision(
 
   // Route based on classifier result
   if (classifier.type === "closing") {
-    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateSummary: false, classifierType: "closing" };
+    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateInsight: false, classifierType: "closing" };
   }
 
   if (classifier.type === "greeting") {
     try {
       const greetingReply = await generateGreetingResponse(userId, freshMessageText);
       if (greetingReply) {
-        return { replyText: greetingReply, shouldGenerateSummary: false, classifierType: "greeting" };
+        return { replyText: greetingReply, shouldGenerateInsight: false, classifierType: "greeting" };
       }
     } catch (err) {
       logger.warn("greeting reply generation failed, using classifier reply", {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateSummary: false, classifierType: "greeting" };
+    return { replyText: classifier.replyText || FALLBACK_REPLY, shouldGenerateInsight: false, classifierType: "greeting" };
   }
 
   if (classifier.type === "trivial") {
     return {
       replyText: swapAckPhrase(classifier.replyText || ackPhrase, ackPhrase),
-      shouldGenerateSummary: false,
+      shouldGenerateInsight: false,
       classifierType: "trivial",
     };
   }
 
   if (classifier.type === "summary_request") {
-    return { replyText: ackPhrase, shouldGenerateSummary: true, classifierType: "summary_request" };
+    return { replyText: ackPhrase, shouldGenerateInsight: true, classifierType: "summary_request" };
   }
 
   if (classifier.type === "setup_checkin") {
-    return { replyText: ackPhrase, shouldGenerateSummary: false, shouldSetupCheckin: true, classifierType: "setup_checkin" };
+    return { replyText: ackPhrase, shouldGenerateInsight: false, shouldSetupCheckin: true, classifierType: "setup_checkin" };
   }
 
   if (classifier.type === "guide_query") {
     try {
       const guideReply = await generateGuideResponse(freshMessageText, options?.isAdmin ?? false);
-      return { replyText: guideReply, shouldGenerateSummary: false, classifierType: "guide_query" };
+      return { replyText: guideReply, shouldGenerateInsight: false, classifierType: "guide_query" };
     } catch (err) {
       logger.warn("guide reply generation failed, falling through to ACK_PROMPT", {
         error: err instanceof Error ? err.message : String(err),

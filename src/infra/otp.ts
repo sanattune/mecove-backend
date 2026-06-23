@@ -1,6 +1,6 @@
-import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
 import { getRedis } from "./redis";
 import { logger } from "./logger";
+import { sendWhatsAppTemplate, WHATSAPP_TEMPLATES } from "./whatsapp";
 
 const OTP_TTL_SECONDS = 10 * 60;
 const OTP_KEY_VERSION = "v1";
@@ -28,20 +28,29 @@ export async function verifyAndConsumeOtp(phone: string, otp: string): Promise<b
   return true;
 }
 
-export async function sendOtpSms(phone: string, otp: string): Promise<void> {
-  const region = process.env.AWS_SNS_REGION?.trim() ?? "ap-south-1";
-  const client = new SNSClient({ region });
-  await client.send(
-    new PublishCommand({
-      PhoneNumber: phone,
-      Message: `Your meCove verification code is ${otp}. Valid for 10 minutes. Do not share this code.`,
-      MessageAttributes: {
-        "AWS.SNS.SMS.SMSType": {
-          DataType: "String",
-          StringValue: "Transactional",
-        },
-      },
-    })
-  );
-  logger.info({ phone: `****${phone.slice(-4)}` }, "OTP SMS sent");
+/**
+ * Delivers the OTP over WhatsApp via the approved `mecove_otp` authentication template.
+ * Replaces the former AWS SNS SMS path (no SMS fallback — non-WhatsApp numbers can't
+ * receive a code; accepted tradeoff, see ADR-0005).
+ *
+ * The code must appear TWICE in the payload — once in the body parameter and once in the
+ * copy-code button parameter — or Meta rejects with "(#132000) parameters do not match".
+ *
+ * Dev: set `OTP_DEV_MODE=true` to log the code and skip the real WhatsApp send (avoids
+ * firing a live template on every local request-otp).
+ */
+export async function sendOtpWhatsApp(phone: string, otp: string): Promise<void> {
+  const masked = `****${phone.slice(-4)}`;
+  if (process.env.OTP_DEV_MODE === "true") {
+    logger.warn({ phone: masked, otp }, "OTP_DEV_MODE: skipping WhatsApp send, OTP logged");
+    return;
+  }
+  // OTP phone is stored E.164 with leading "+"; the Graph API "to" field wants bare digits.
+  const toDigits = phone.replace(/\D/g, "");
+  const { name, lang } = WHATSAPP_TEMPLATES.otp;
+  await sendWhatsAppTemplate(toDigits, name, lang, [
+    { type: "body", parameters: [{ type: "text", text: otp }] },
+    { type: "button", sub_type: "url", index: 0, parameters: [{ type: "text", text: otp }] },
+  ]);
+  logger.info({ phone: masked }, "OTP WhatsApp template sent");
 }

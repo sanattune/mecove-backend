@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import {
-  generateSummaryPipeline,
-  type SummaryArtifactWriter,
-} from "../summary/pipeline";
-import type { ReportType, SignalBucket, WindowBundle, WindowDay } from "../summary/types";
+  generateInsightPipeline,
+  type InsightArtifactWriter,
+} from "../insight/pipeline";
+import type { InsightType, SignalBucket, WindowBundle, WindowDay } from "../insight/types";
 
 type ChatMessage = {
   index: number;
@@ -24,10 +24,10 @@ type CliOptions = {
   days: number;
   timezone: string;
   endDate: string;
-  reportTypes: ReportType[];
+  reportTypes: InsightType[];
 };
 
-const VALID_REPORT_TYPES: ReportType[] = ["sessionbridge", "myself_lately"];
+const VALID_INSIGHT_TYPES: InsightType[] = ["sessionbridge", "myself_lately"];
 
 const IST_OFFSET_MINUTES = 330;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -86,7 +86,7 @@ function parseArgs(): CliOptions {
   let days = DEFAULT_DAYS;
   let timezone = DEFAULT_TIMEZONE;
   let endDate = toIstDateString(new Date());
-  let reportType: ReportType | null = null;
+  let reportType: InsightType | null = null;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -100,10 +100,10 @@ function parseArgs(): CliOptions {
       if (!isDateString(endDate)) throw new Error("--end-date must use YYYY-MM-DD");
     } else if (arg === "--report-type") {
       const raw = args[++i] ?? "";
-      if (!VALID_REPORT_TYPES.includes(raw as ReportType)) {
-        throw new Error(`--report-type must be one of: ${VALID_REPORT_TYPES.join(", ")}`);
+      if (!VALID_INSIGHT_TYPES.includes(raw as InsightType)) {
+        throw new Error(`--report-type must be one of: ${VALID_INSIGHT_TYPES.join(", ")}`);
       }
-      reportType = raw as ReportType;
+      reportType = raw as InsightType;
     } else if (!fixtureDir && !arg.startsWith("-")) {
       fixtureDir = arg;
     } else {
@@ -115,7 +115,7 @@ function parseArgs(): CliOptions {
     throw new Error(`Missing fixture directory.\n\n${usage()}`);
   }
 
-  const reportTypes: ReportType[] = reportType ? [reportType] : [...VALID_REPORT_TYPES];
+  const reportTypes: InsightType[] = reportType ? [reportType] : [...VALID_INSIGHT_TYPES];
 
   return {
     fixtureDir: resolve(fixtureDir),
@@ -249,12 +249,12 @@ function stageFileName(stage: string): string {
   return `${stage.replace(/_/g, "-")}.json`;
 }
 
-function createFileArtifactWriter(supportingDir: string): SummaryArtifactWriter {
+function createFileArtifactWriter(supportingDir: string): InsightArtifactWriter {
   return {
-    async writeArtifact(_userId, _summaryId, stage, payload) {
+    async writeArtifact(_userId, _insightId, stage, payload) {
       writeFileSync(join(supportingDir, stageFileName(stage)), JSON.stringify(payload, null, 2));
     },
-    async writeErrorArtifact(_userId, _summaryId, stage, error, rawSnippet) {
+    async writeErrorArtifact(_userId, _insightId, stage, error, rawSnippet) {
       writeFileSync(
         join(supportingDir, stageFileName(`error_${stage}`)),
         JSON.stringify({ error, rawSnippet: rawSnippet ?? "" }, null, 2)
@@ -286,14 +286,14 @@ async function main() {
   const windowBundle = buildWindowBundleFromChatlog(chatData, { ...options, userId });
 
   for (const reportType of options.reportTypes) {
-    const summaryId = `${userId}-${options.days}d-${options.endDate}-${reportType}`;
-    const result = await generateSummaryPipeline({
+    const insightId = `${userId}-${options.days}d-${options.endDate}-${reportType}`;
+    const result = await generateInsightPipeline({
       userId,
-      summaryId,
+      insightId,
       timezone: options.timezone,
       windowBundle,
       artifactWriter: createFileArtifactWriter(supportingDir),
-      reportType,
+      insightType: reportType,
     });
 
     const reportStem = reportType === "myself_lately" ? "myself-lately" : "sessionbridge";
@@ -304,7 +304,7 @@ async function main() {
       join(supportingDir, `${reportStem}-meta.json`),
       JSON.stringify(
         {
-          summaryId,
+          insightId,
           reportType,
           modelName: result.modelName,
           promptVersionString: result.promptVersionString,

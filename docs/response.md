@@ -13,7 +13,7 @@ User message → generateAckDecision()
                   ├─ 2. selectAckPhrase() — pick next ack based on last reply's opener
                   ├─ 3. Render prompt with conversation history
                   ├─ 4. LLM generates full replyText (including its own ack opener)
-                  ├─ 5. parseAckDecision() — extract replyText + shouldGenerateSummary
+                  ├─ 5. parseAckDecision() — extract replyText + shouldGenerateInsight
                   └─ 6. swapAckPhrase() — replace LLM's ack opener with rotated one
                           │
                           └─ Final replyText sent to user
@@ -68,7 +68,7 @@ This is the key insight: **edge cases (greetings, closings, safety, feeling-refl
 
 The prompt is intentionally close to the original working version. Key points:
 
-- **Output format:** `{"replyText":"<text>","shouldGenerateSummary":<bool>}` — just 2 fields, same as always
+- **Output format:** `{"replyText":"<text>","shouldGenerateInsight":<bool>}` — just 2 fields, same as always
 - **Reply structure:** Ack (required) + Observation (optional) + Open space (optional)
 - **No DISALLOWED_STARTS** — removed since rotation handles it in code
 - **No ack-varying instructions** — removed since the LLM's ack choice gets swapped anyway
@@ -101,7 +101,7 @@ The LLM decides whether to ask a question based on:
 | Safety (self-harm) | Crisis response or reflection | No swap |
 | Sexual content | Sets boundary | No swap |
 | Save failed | Error message | No swap |
-| Summary request | Brief ack, shouldGenerateSummary=true | Swaps ack (starts with "Got it." etc.) |
+| Summary request | Brief ack, shouldGenerateInsight=true | Swaps ack (starts with "Got it." etc.) |
 | Repetition complaint | "You're right." + fresh reply | No swap ("You're right." not in ACK_PHRASES) |
 | Routine journal entry | Just an ack ("Got it.") | Swaps to rotated ack |
 | Emotional/reflective | Ack + reflection +/- question | Swaps ack, keeps rest |

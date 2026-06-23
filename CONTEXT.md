@@ -65,6 +65,51 @@ _Avoid_: worth flagging, concerns
 A single closing sentence. Prefers a contrast pattern ("There seems to be a contrast between X and Y"); falls back to a single gentle observation when no contrast fits.
 _Avoid_: conclusion, summary, advice
 
+### Professional support
+
+**User**:
+The single account / auth principal — Identity channel binding, OTP, JWT, refresh
+tokens. Holds no role-specific data intrinsically. **Client** and **Professional**
+are non-exclusive roles layered on it; a User can be both.
+_Avoid_: account, profile (when you mean the auth principal)
+
+**Client**:
+The journaling role. Kept inline on the **User** row (no separate Client table) —
+the User row doubles as the Client profile.
+_Avoid_: customer, patient
+
+**Professional**:
+The supervisory role: a therapist, counsellor, or coach. Represented by the
+existence of one or more **ProfessionalProfile** rows on a User, never by a role
+string.
+_Avoid_: coach (that's one professionalType, not the role name), provider, clinician
+
+**ProfessionalProfile**:
+A practice-side profile for a **Professional** (1:N with User). Carries
+`professionalType` (`therapist | counsellor | coach`), `additionalTitle` (free text,
+e.g. "career coach"), `displayName`, and an async-reviewed `verificationStatus`
+trust badge.
+
+**Engagement**:
+The first-class Professional↔Client relationship. Pro-initiated (invite a
+non-user by phone, or add an existing user), time-bounded, and gated by Client
+acceptance: `pending → active → ended`. Either side may end it; access derives from
+its status.
+_Avoid_: connection, link, subscription
+
+**Insight**:
+A generated artifact for a user — the umbrella over **SessionBridge** and
+**Myself, Lately**. Generalizes the historical `Summary` model (one row per
+generated document, `insightType` replacing `reportType`).
+_Avoid_: report (deprecated word — do not use), summary (the old model name)
+
+**InsightShare**:
+A client-controlled grant exposing ONE **Insight** to ONE **Engagement**. Carries
+`revokedAt` (per-Insight unshare) and an `autoSent` marker. A Pro can read an
+Insight only via an active Engagement with a non-revoked share. No Pro-side pull,
+no access to raw journal/Daily Log.
+_Avoid_: report share, disclosure
+
 ### Pipeline
 
 **L1 canonicalizer** (shared):
@@ -97,6 +142,10 @@ When fewer than 4 days are logged in the window, all inferred sections (themes, 
 - **Observed Themes** and **Signals Worth Attention** are mutually exclusive partitions of `repeatCandidates`: topical repeats go to Themes, internal-state repeats go to Signals
 - **Words Used in Context** rows pull statements from canonical `facts[].sourceSnippet`; the `reflects` value, when present, comes from `explicitEmotions` for the same day
 - **Moments of Variation** rows are sourced from `facts[].sourceSnippet` filtered by positive-affect emotions in the same day's `explicitEmotions`
+- A **User** has 0-or-1 **Client** role (inline) and 0-or-many **ProfessionalProfile** rows, independently
+- A **Professional** and a **Client** are joined by an **Engagement**; a Client may hold many concurrent Engagements
+- An **InsightShare** grants one **Engagement** access to one **Insight**; access requires the Engagement to be `active` and the share not revoked
+- An **Insight** is owned by the **Client** who generated it; sharing never copies it and never exposes raw journal entries
 
 ## Example dialogue
 
@@ -111,6 +160,8 @@ When fewer than 4 days are logged in the window, all inferred sections (themes, 
 - "patterns" was used both as a Myself, Lately section name and as a generic pipeline term — resolved: the user-facing section is now **What Has Been Coming Up**, the field name remains `patterns` internally for code continuity, but new prose in this repo should prefer the section name.
 - "vocabulary" used to mean both the old SessionBridge section and the broader notion of emotion words across reports — resolved: section is now **Words Used in Context**; field is `wordsInContext`. The general notion is just "emotion words" or "explicit emotions" (canonical key).
 - "flagging" carried clinical connotation in older language — resolved: replaced with **Signals Worth Attention** (counsellor-facing, repetition-based) and **Something to Notice** (user-facing, reflective).
+- "report" / "summary" — deprecated as the generic word for a generated artifact; the umbrella term is now **Insight** (the `Summary` model and `reportType` field are being renamed to `Insight`/`insightType`). **SessionBridge** and **Myself, Lately** remain proper names for the two Insight types.
+- "account" / "user" — resolved: **User** is the auth principal; **Client** and **Professional** are roles on it, not separate accounts.
 
 ## App interaction model
 

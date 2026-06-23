@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-MeCove backend is a Node.js/TypeScript service that receives WhatsApp messages via Meta webhooks, stores them, generates conversational replies using an LLM (Groq), and optionally sends **contextual (threaded/bubbled)** replies when the conversation has moved on. It also enqueues summary-generation jobs for the last 7 days of messages.
+MeCove backend is a Node.js/TypeScript service that receives WhatsApp messages via Meta webhooks, stores them, generates conversational replies using an LLM (Groq), and optionally sends **contextual (threaded/bubbled)** replies when the conversation has moved on. It also enqueues insight-generation jobs for the last 7 days of messages.
 
 ---
 
@@ -13,7 +13,7 @@ MeCove backend is a Node.js/TypeScript service that receives WhatsApp messages v
 ```
 User 1───* Identity
 User 1───* Message
-User 1───* Summary
+User 1───* Insight
 Identity 1───* Message
 ```
 
@@ -24,7 +24,7 @@ Identity 1───* Message
 | **User**  | One per end-user; aggregates identities and messages. |
 | **Identity** | One per channel + channel user (e.g. one WhatsApp number). Links to User. |
 | **Message** | One per inbound message; stores text, reply metadata, and optional raw payload. |
-| **Summary** | One per summary job run; stores range, status, summary text, input hash, and error. |
+| **Insight** | One per insight job run; stores range, status, insight text, input hash, and error. |
 
 ### 2.3 Detailed Schema
 
@@ -34,7 +34,7 @@ Identity 1───* Message
 | id        | UUID     | PK, default uuid() |
 | createdAt | DateTime | default now() |
 
-- Relations: `identities`, `messages`, `summaries`.
+- Relations: `identities`, `messages`, `insights`.
 
 #### Identity
 | Column         | Type   | Notes |
@@ -66,7 +66,7 @@ Identity 1───* Message
 - **Unique:** `(identityId, sourceMessageId)` — dedupe by channel identity + WhatsApp id.
 - **Indexes:** `(userId, createdAt)`, `(identityId, createdAt)`, `(userId, repliedAt)`.
 
-#### Summary
+#### Insight
 | Column              | Type     | Notes |
 |---------------------|----------|--------|
 | id                  | UUID     | PK |
@@ -75,7 +75,7 @@ Identity 1───* Message
 | rangeEnd            | DateTime | range end |
 | createdAt           | DateTime | default now() |
 | status              | String   | e.g. `"success"` |
-| summaryText         | String?  | generated summary |
+| insightText         | String?  | generated insight |
 | modelName           | String?  | optional |
 | promptVersion       | String?  | optional |
 | inputMessagesCount  | Int      | default 0 |
@@ -107,7 +107,7 @@ Identity 1───* Message
 ## 4. Patterns
 
 - **Queue-based async processing**  
-  Inbound work (reply generation, summary) is enqueued; API responds 200 quickly. Workers process jobs with retries (reply: 3 attempts, exponential backoff).
+  Inbound work (reply generation, insight) is enqueued; API responds 200 quickly. Workers process jobs with retries (reply: 3 attempts, exponential backoff).
 
 - **Fail-fast startup**  
   API and worker validate `REDIS_URL` and `DATABASE_URL` on startup and exit with a clear error if missing.
@@ -156,7 +156,7 @@ Identity 1───* Message
    - `addMessageTracking(user.id, message.id, serverTimestamp)` adds the message to the user’s ZSET for “messages after” and staleness.
 
 6. **Enqueue jobs**  
-   - Summary: `summaryQueue.add("generateSummary", { userId, range: "last_7_days" })`.
+   - Insight: `insightQueue.add("generateInsight", { userId, range: "last_7_days" })`.
    - Reply: `replyQueue.add("generateReply", { userId, messageId, identityId, sourceMessageId, channelUserKey, messageText, messageTimestamp: serverTimestamp })`.
 
 7. **Response**  
@@ -183,7 +183,7 @@ Identity 1───* Message
 5. **Persist reply**  
    - Update `Message`: set `repliedAt = now()`, `replyText = replyText`.
 
-### 5.3 Summary Job (Worker)
+### 5.3 Insight Job (Worker)
 
 1. **Job data**  
    `userId`, `range: "last_7_days"`.
@@ -191,8 +191,8 @@ Identity 1───* Message
 2. **Load messages**  
    Last 7 days for that user, ordered by `createdAt`.
 
-3. **Create Summary row**  
-   `rangeStart`, `rangeEnd`, `status: "success"`, `summaryText: "Summary generated for N messages."`, `inputMessagesCount`, `inputHash` (hash of message ids + texts).
+3. **Create Insight row**  
+   `rangeStart`, `rangeEnd`, `status: "success"`, `insightText: "Insight generated for N messages."`, `inputMessagesCount`, `inputHash` (hash of message ids + texts).
 
 ### 5.4 Webhook Verification
 
@@ -201,7 +201,7 @@ Identity 1───* Message
 
 ### 5.5 Debug Endpoint
 
-- `POST /debug/enqueue-summary` (or GET): finds identity `(whatsapp, +10000000000)`, enqueues one `generateSummary` job, returns `{ ok: true, jobId }`.
+- `POST /debug/enqueue-insight` (or GET): finds identity `(whatsapp, +10000000000)`, enqueues one `generateInsight` job, returns `{ ok: true, jobId }`.
 
 ---
 
@@ -225,9 +225,9 @@ src/
 │   └── types.ts          # LLM types
 ├── queues/
 │   ├── replyQueue.ts     # BullMQ "reply" queue, GenerateReplyPayload
-│   └── summaryQueue.ts   # BullMQ "summary" queue, GenerateSummaryPayload
+│   └── insightQueue.ts   # BullMQ "insight" queue, GenerateInsightPayload
 ├── worker/
-│   └── worker.ts         # Summary worker + Reply worker, shutdown
+│   └── worker.ts         # Insight worker + Reply worker, shutdown
 └── scripts/
     ├── db_smoke.ts       # DB connectivity smoke test
     └── check_reply_queue.ts # Reply queue diagnostics
@@ -259,4 +259,4 @@ src/
 
 ---
 
-This document reflects the design as of the current codebase (single-channel WhatsApp, reply + summary workers, contextual reply rules, and Redis-based message tracking).
+This document reflects the design as of the current codebase (single-channel WhatsApp, reply + insight workers, contextual reply rules, and Redis-based message tracking).

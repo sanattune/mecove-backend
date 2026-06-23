@@ -155,7 +155,7 @@ export async function handleSendMessage(request: FastifyRequest, reply: FastifyR
     }
 
     let replyText = decision.replyText;
-    if (decision.shouldGenerateSummary) {
+    if (decision.shouldGenerateInsight) {
       replyText = "You can generate a report from the Reports tab in the app.";
     } else if (decision.shouldSetupCheckin) {
       replyText = "You can set your daily check-in time in Settings.";

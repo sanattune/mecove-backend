@@ -16,7 +16,7 @@ import {
   handleWhatsAppVerification,
   handleWhatsAppWebhook,
   handleDebugConsentStatus,
-  handleDebugEnqueueSummary,
+  handleDebugEnqueueInsight,
 } from "./webhook/whatsappHandler";
 
 // ── Startup validation ────────────────────────────────────────────────────────
@@ -80,9 +80,12 @@ export async function buildApp() {
       tags: [
         { name: "Auth", description: "OTP sign-in, token refresh, logout" },
         { name: "Messages", description: "Chat messages and AI replies" },
-        { name: "Summary", description: "Report generation and PDF download" },
+        { name: "Insights", description: "Insight generation and PDF download" },
         { name: "Checkin", description: "Daily reminder configuration" },
         { name: "Account", description: "User stats, data deletion, privacy" },
+        { name: "Professional", description: "Professional profiles (coach/therapist/counsellor onboarding)" },
+        { name: "Engagement", description: "Client-side engagement: list and accept" },
+        { name: "Admin", description: "Team-only: professional verification review" },
       ],
     },
   }));
@@ -178,10 +181,10 @@ export async function buildApp() {
 
     waInstance.route({
       method: ["GET", "POST"],
-      url: "/debug/enqueue-summary",
+      url: "/debug/enqueue-insight",
       handler: async (request, reply) => {
         reply.hijack();
-        await handleDebugEnqueueSummary(request.raw, reply.raw);
+        await handleDebugEnqueueInsight(request.raw, reply.raw);
       },
     });
   }));

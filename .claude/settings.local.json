@@ -24,7 +24,29 @@
       "PowerShell(gh *)",
       "Bash(pnpm add *)",
       "Bash(pnpm generate:openapi)",
-      "Bash(pnpm tsc *)"
+      "Bash(pnpm tsc *)",
+      "Bash(docker compose *)",
+      "Bash(echo \"build exit: $?\")",
+      "Bash(echo \"tsc --noEmit exit: $?\")",
+      "Read(//tmp/**)",
+      "Bash(grep -n 'return \\\\`summary:' src/insight/keys.ts)",
+      "Bash(grep -n 'return \\\\`summary:' src/api/webhook/whatsappHandler.ts)",
+      "Bash(git mv *)",
+      "Bash(pnpm openapi:generate docs/openapi.yaml)",
+      "Bash(pnpm openapi:generate ../docs/specs/openapi.yaml)",
+      "Bash(timeout 540 ./gradlew compileDebugKotlin --console=plain)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(mv docs/coach-support-plan.md docs/plans/plan_coach-support.md)",
+      "Bash(ls docs/*.md)",
+      "Bash(git push *)",
+      "Bash(echo \"tsc_exit=$?\")",
+      "Bash(docker exec *)",
+      "Bash(grep -vE \"^\\\\s*//|\\\\* |counsellor|coach\\\\b.*\\(therapist|counsellor\\)\")"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "atlassian"
+  ]
 }

@@ -4,6 +4,7 @@ import { getRedis } from "../infra/redis";
 export const REMINDER_QUEUE_NAME = "reminder";
 export const JOB_NAME_SCAN_REMINDERS = "scanReminders";
 export const JOB_NAME_SCAN_NUDGES = "scanNudges";
+export const JOB_NAME_SCAN_ENGAGEMENT_EXPIRY = "scanEngagementExpiry";
 
 export type ScanRemindersPayload = Record<string, never>;
 

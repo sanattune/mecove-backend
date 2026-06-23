@@ -2,6 +2,71 @@ import { logger } from "./logger";
 
 let whatsappReplyEnvWarned = false;
 
+/**
+ * Approved WhatsApp message templates. Template names are immutable in Meta and
+ * identical across every environment (single WhatsApp Business account), so they
+ * live here as constants rather than per-env config. Env overrides are accepted
+ * as an escape hatch but are not required — the defaults match the submitted names.
+ */
+export const WHATSAPP_TEMPLATES = {
+  otp: {
+    name: process.env.WHATSAPP_OTP_TEMPLATE_NAME?.trim() || "mecove_otp",
+    lang: process.env.WHATSAPP_TEMPLATE_LANG?.trim() || "en",
+  },
+  proInvite: {
+    name: process.env.WHATSAPP_INVITE_TEMPLATE_NAME?.trim() || "mecove_pro_invite",
+    lang: process.env.WHATSAPP_TEMPLATE_LANG?.trim() || "en",
+  },
+} as const;
+
+/**
+ * One entry of a template message's `components` array (body / button / header).
+ * Shape is passed through to the Graph API verbatim — see Meta's template message docs.
+ */
+export type WhatsAppTemplateComponent = Record<string, unknown>;
+
+/**
+ * Sends a pre-approved WhatsApp template message. Unlike sendWhatsAppReply (free-form,
+ * only deliverable inside a 24h customer-service window), templates reach cold numbers
+ * — required for OTP and professional invites.
+ */
+export async function sendWhatsAppTemplate(
+  toDigits: string,
+  templateName: string,
+  langCode: string,
+  components: WhatsAppTemplateComponent[]
+): Promise<void> {
+  const { phoneId, token } = getWhatsAppEnv();
+  const url = `https://graph.facebook.com/v19.0/${phoneId}/messages`;
+  const payload = {
+    messaging_product: "whatsapp",
+    to: toDigits,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: langCode },
+      components,
+    },
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error("WhatsApp template send error", {
+      status: response.status,
+      error: errorText,
+      template: templateName,
+    });
+    throw new Error(`WhatsApp template send error: ${response.status} ${errorText}`);
+  }
+}
+
 function getWhatsAppEnv(): { phoneId: string; token: string } {
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
   const token = process.env.WHATSAPP_PERMANENT_TOKEN?.trim();

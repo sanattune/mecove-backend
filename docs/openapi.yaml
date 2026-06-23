@@ -22,8 +22,9 @@ paths:
       summary: Request OTP
       tags:
         - Auth
-      description: Sends a 6-digit OTP via SMS. Rate limited to 3 requests per 15
-        minutes per phone number.
+      description: Sends a 6-digit OTP over WhatsApp (the mecove_otp template). No SMS
+        fallback — the number must be reachable on WhatsApp. Rate limited to 3 requests
+        per 15 minutes per phone number.
       requestBody:
         required: true
         content:
@@ -369,13 +370,13 @@ paths:
                     type: string
                   message:
                     type: string
-  /summary/generate:
+  /insights/generate:
     post:
-      summary: Request a report
+      summary: Request an insight
       tags:
-        - Summary
-      description: Enqueues a report generation job. Returns a summaryId to poll. Only
-        one report per user can be in progress at a time.
+        - Insights
+      description: Enqueues an insight generation job. Returns an insightId to poll.
+        Only one insight per user can be in progress at a time.
       requestBody:
         required: true
         content:
@@ -407,7 +408,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  summaryId:
+                  insightId:
                     type: string
                   status:
                     type: string
@@ -433,18 +434,18 @@ paths:
                     type: string
                   message:
                     type: string
-  /summary/{summaryId}:
+  /insights/{insightId}:
     get:
-      summary: Get report status
+      summary: Get insight status
       tags:
-        - Summary
-      description: Poll this after POST /summary/generate. Status progresses queued →
+        - Insights
+      description: Poll this after POST /insights/generate. Status progresses queued →
         processing → success | success_fallback | failed.
       parameters:
         - schema:
             type: string
           in: path
-          name: summaryId
+          name: insightId
           required: true
       security:
         - BearerAuth: []
@@ -466,7 +467,7 @@ paths:
                       - success
                       - success_fallback
                       - failed
-                  reportType:
+                  insightType:
                     type: string
                   rangeStart:
                     type: string
@@ -499,18 +500,18 @@ paths:
                     type: string
                   message:
                     type: string
-  /summary/{summaryId}/pdf:
+  /insights/{insightId}/pdf:
     get:
-      summary: Download report PDF
+      summary: Download insight PDF
       tags:
-        - Summary
-      description: Returns the PDF bytes for a completed report. Only available once
+        - Insights
+      description: Returns the PDF bytes for a completed insight. Only available once
         status is success or success_fallback.
       parameters:
         - schema:
             type: string
           in: path
-          name: summaryId
+          name: insightId
           required: true
       security:
         - BearerAuth: []
@@ -666,7 +667,7 @@ paths:
                     type: string
                     format: date-time
                     nullable: true
-                  lastReport:
+                  lastInsight:
                     nullable: true
                     type: object
                     properties:
@@ -688,11 +689,12 @@ paths:
                     type: string
   /account/data:
     delete:
-      summary: Delete all user data
+      summary: Delete my messages
       tags:
         - Account
-      description: Permanently deletes all messages and reports for the authenticated
-        user. Cannot be undone.
+      description: Permanently deletes the authenticated user's chat messages.
+        Generated insights are retained (so any professional-support
+        engagements/shares stay valid). Cannot be undone.
       security:
         - BearerAuth: []
       responses:
@@ -780,6 +782,1332 @@ paths:
                     type: string
                   message:
                     type: string
+  /professional/profiles:
+    post:
+      summary: Create a professional profile
+      tags:
+        - Professional
+      description: Self-serve onboarding. Creates a ProfessionalProfile for the caller
+        and marks them a professional. A user may hold several profiles (e.g.
+        therapist and coach). Active immediately; verificationStatus starts
+        'pending'.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - professionalType
+                - displayName
+              properties:
+                professionalType:
+                  type: string
+                  enum:
+                    - therapist
+                    - counsellor
+                    - coach
+                displayName:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                additionalTitle:
+                  type: string
+                  maxLength: 120
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalType:
+                    type: string
+                    enum:
+                      - therapist
+                      - counsellor
+                      - coach
+                  displayName:
+                    type: string
+                  additionalTitle:
+                    type: string
+                    nullable: true
+                  verificationStatus:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    get:
+      summary: List the caller's professional profiles
+      tags:
+        - Professional
+      description: Returns the authenticated user's own professional profiles (empty
+        array if none).
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        professionalType:
+                          type: string
+                          enum:
+                            - therapist
+                            - counsellor
+                            - coach
+                        displayName:
+                          type: string
+                        additionalTitle:
+                          type: string
+                          nullable: true
+                        verificationStatus:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /professional/engagements:
+    post:
+      summary: Open an engagement with a client
+      tags:
+        - Professional
+      description: "Pro-initiated. Identifies the client by E.164 phone: if an account
+        exists it is linked (add); otherwise a pending invite is stored keyed by
+        phone (invite), reconciled when that phone signs up. Always starts
+        'pending' — the client must accept. Rejects a duplicate pending/active
+        engagement for the same pro↔client pair."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - professionalId
+                - clientPhone
+              properties:
+                professionalId:
+                  type: string
+                  description: One of the caller's professional profiles
+                clientPhone:
+                  type: string
+                  description: E.164, e.g. +919876543210
+                startDate:
+                  type: string
+                  format: date-time
+                endDate:
+                  type: string
+                  format: date-time
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalId:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - active
+                      - ended
+                  startDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  autoSendSessionBridge:
+                    type: boolean
+                  acceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedBy:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  client:
+                    type: object
+                    nullable: true
+                    properties:
+                      userId:
+                        type: string
+                      phone:
+                        type: string
+                        nullable: true
+                      displayName:
+                        type: string
+                        nullable: true
+                  inviteePhone:
+                    type: string
+                    nullable: true
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    get:
+      summary: List the caller's engagements
+      tags:
+        - Professional
+      description: All engagements across the caller's professional profiles, newest
+        first. Linked client profile (phone, name) is included once an account
+        is attached.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  engagements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        professionalId:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                            - pending
+                            - active
+                            - ended
+                        startDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        autoSendSessionBridge:
+                          type: boolean
+                        acceptedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endedBy:
+                          type: string
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                        client:
+                          type: object
+                          nullable: true
+                          properties:
+                            userId:
+                              type: string
+                            phone:
+                              type: string
+                              nullable: true
+                            displayName:
+                              type: string
+                              nullable: true
+                        inviteePhone:
+                          type: string
+                          nullable: true
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /professional/engagements/{engagementId}/end:
+    post:
+      summary: End an engagement (professional)
+      tags:
+        - Professional
+      description: Professional ends the engagement (D11). Status -> ended,
+        endedBy=professional. The client's access-granting shares stop resolving
+        immediately (derived). 409 if already ended.
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalId:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - active
+                      - ended
+                  startDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  autoSendSessionBridge:
+                    type: boolean
+                  acceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedBy:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  client:
+                    type: object
+                    nullable: true
+                    properties:
+                      userId:
+                        type: string
+                      phone:
+                        type: string
+                        nullable: true
+                      displayName:
+                        type: string
+                        nullable: true
+                  inviteePhone:
+                    type: string
+                    nullable: true
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /engagements:
+    get:
+      summary: List my engagements (as a client)
+      tags:
+        - Engagement
+      description: The caller's engagements with professionals — pending (to accept),
+        active, and ended — newest first, each with the professional's profile.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  engagements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        professionalId:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                            - pending
+                            - active
+                            - ended
+                        startDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endDate:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        autoSendSessionBridge:
+                          type: boolean
+                        acceptedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        endedBy:
+                          type: string
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                        inviteePhone:
+                          type: string
+                          nullable: true
+                        professional:
+                          type: object
+                          properties:
+                            professionalId:
+                              type: string
+                            displayName:
+                              type: string
+                            professionalType:
+                              type: string
+                            additionalTitle:
+                              type: string
+                              nullable: true
+                            verificationStatus:
+                              type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /engagements/{engagementId}/accept:
+    post:
+      summary: Accept a pending engagement
+      tags:
+        - Engagement
+      description: The client's consent gate (D5). Moves a pending engagement to
+        active. No client data flows to the professional until this is done. 409
+        if the engagement is not pending or an active one with that professional
+        already exists.
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalId:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - active
+                      - ended
+                  startDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  autoSendSessionBridge:
+                    type: boolean
+                  acceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedBy:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  inviteePhone:
+                    type: string
+                    nullable: true
+                  professional:
+                    type: object
+                    properties:
+                      professionalId:
+                        type: string
+                      displayName:
+                        type: string
+                      professionalType:
+                        type: string
+                      additionalTitle:
+                        type: string
+                        nullable: true
+                      verificationStatus:
+                        type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /engagements/{engagementId}/end:
+    post:
+      summary: End an engagement (client)
+      tags:
+        - Engagement
+      description: Client ends the engagement (D11) — from pending (decline) or
+        active. Status -> ended, endedBy=client. The professional loses access
+        immediately (derived). 409 if already ended.
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalId:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - active
+                      - ended
+                  startDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endDate:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  autoSendSessionBridge:
+                    type: boolean
+                  acceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  endedBy:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                    format: date-time
+                  inviteePhone:
+                    type: string
+                    nullable: true
+                  professional:
+                    type: object
+                    properties:
+                      professionalId:
+                        type: string
+                      displayName:
+                        type: string
+                      professionalType:
+                        type: string
+                      additionalTitle:
+                        type: string
+                        nullable: true
+                      verificationStatus:
+                        type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /engagements/{engagementId}/shares:
+    post:
+      summary: Share an insight with this engagement
+      tags:
+        - Engagement
+      description: Client discloses one of their own insights (any type) to an active
+        engagement. The professional can then read it; no raw journal, no pull.
+        Re-sharing a previously-unshared insight reactivates it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - insightId
+              properties:
+                insightId:
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  engagementId:
+                    type: string
+                  insightId:
+                    type: string
+                  sharedAt:
+                    type: string
+                    format: date-time
+                  revokedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  autoSent:
+                    type: boolean
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /engagements/{engagementId}/shares/{insightId}:
+    delete:
+      summary: Unshare an insight
+      tags:
+        - Engagement
+      description: Client revokes a single shared insight (sets revokedAt); the
+        engagement and other shares are untouched. Idempotent.
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: insightId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /engagements/{engagementId}/auto-send:
+    put:
+      summary: Toggle auto-send of SessionBridge insights
+      tags:
+        - Engagement
+      description: When enabled, new SessionBridge insights the client generates are
+        automatically shared with this engagement. Future insights only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  engagementId:
+                    type: string
+                  autoSendSessionBridge:
+                    type: boolean
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "409":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /professional/engagements/{engagementId}/insights:
+    get:
+      summary: List insights shared on an engagement
+      tags:
+        - Professional
+      description: Insights the client has shared and not revoked, only while the
+        engagement is active (access is derived — ending the engagement cuts
+        access). Metadata only.
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  insights:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        insightId:
+                          type: string
+                        insightType:
+                          type: string
+                        status:
+                          type: string
+                        rangeStart:
+                          type: string
+                          format: date-time
+                        rangeEnd:
+                          type: string
+                          format: date-time
+                        createdAt:
+                          type: string
+                          format: date-time
+                        sharedAt:
+                          type: string
+                          format: date-time
+                        autoSent:
+                          type: boolean
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /professional/engagements/{engagementId}/insights/{insightId}/pdf:
+    get:
+      summary: Download a shared insight PDF
+      tags:
+        - Professional
+      description: PDF of a shared insight, gated by the same derived access (active
+        engagement + non-revoked share).
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: engagementId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: insightId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+                description: PDF file
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /admin/professional-profiles:
+    get:
+      summary: List professional profiles for verification review
+      tags:
+        - Admin
+      description: Team-only. Optional ?status=pending|verified|rejected filter.
+        Includes the owner's phone + name.
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - pending
+              - verified
+              - rejected
+          in: query
+          name: status
+          required: false
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /admin/professional-profiles/{profileId}/verification:
+    patch:
+      summary: Set a professional profile's verification status
+      tags:
+        - Admin
+      description: Team-only async trust badge (D15) — non-blocking; client-accept is
+        the real gate. Sets verificationStatus to pending|verified|rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - verificationStatus
+              properties:
+                verificationStatus:
+                  type: string
+                  enum:
+                    - pending
+                    - verified
+                    - rejected
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: profileId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalType:
+                    type: string
+                    enum:
+                      - therapist
+                      - counsellor
+                      - coach
+                  displayName:
+                    type: string
+                  additionalTitle:
+                    type: string
+                    nullable: true
+                  verificationStatus:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
   /webhooks/whatsapp:
     get:
       responses:
@@ -794,7 +2122,7 @@ paths:
       responses:
         "200":
           description: Default Response
-  /debug/enqueue-summary:
+  /debug/enqueue-insight:
     get: &a2
       responses:
         "200":
@@ -807,9 +2135,15 @@ tags:
     description: OTP sign-in, token refresh, logout
   - name: Messages
     description: Chat messages and AI replies
-  - name: Summary
-    description: Report generation and PDF download
+  - name: Insights
+    description: Insight generation and PDF download
   - name: Checkin
     description: Daily reminder configuration
   - name: Account
     description: User stats, data deletion, privacy
+  - name: Professional
+    description: Professional profiles (coach/therapist/counsellor onboarding)
+  - name: Engagement
+    description: "Client-side engagement: list and accept"
+  - name: Admin
+    description: "Team-only: professional verification review"
