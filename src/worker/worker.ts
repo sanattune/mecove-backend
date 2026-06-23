@@ -32,8 +32,8 @@ import {
 import { buildWindowBundle } from "../insight/windowBuilder";
 import { buildMinimalFallbackReport } from "../insight/sessionbridge/assembler";
 import { generateInsightPipeline } from "../insight/pipeline";
-import { autoShareSessionBridgeInsight } from "../coach/sharing";
-import { expireDueEngagements, startEngagementExpiryScheduler } from "../coach/lifecycle";
+import { autoShareSessionBridgeInsight } from "../professional/sharing";
+import { expireDueEngagements, startEngagementExpiryScheduler } from "../professional/lifecycle";
 import { insightLockKey, insightTypePromptKey } from "../insight/keys";
 import {
   REMINDER_QUEUE_NAME,

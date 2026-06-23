@@ -16,7 +16,7 @@ src/engagement/
 Both features share the `reminderQueue`. Repeatable jobs registered at worker startup:
 - `scanReminders` — every 60s, delivers due `UserReminder` rows
 - `scanNudges` — daily cron at 10:30 UTC (4 PM IST), sends inactivity nudges
-- `scanEngagementExpiry` — daily cron at 00:30 UTC; coach-support expiry sweep. NOTE: the logic lives in `src/coach/lifecycle.ts` (not here) — it only reuses this shared queue. Dispatched in the same `reminderWorker`.
+- `scanEngagementExpiry` — daily cron at 00:30 UTC; professional-support expiry sweep. NOTE: the logic lives in `src/professional/lifecycle.ts` (not here) — it only reuses this shared queue. Dispatched in the same `reminderWorker`.
 
 New engagement features should add their jobs here and dispatch from the `reminderWorker` in `worker.ts`.
 

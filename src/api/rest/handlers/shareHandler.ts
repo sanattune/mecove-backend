@@ -4,7 +4,7 @@ import { prisma } from "../../../infra/prisma";
 import { Errors } from "../../common/errors";
 import { childLogger } from "../../../infra/logger";
 import { captureException } from "../../../infra/sentry";
-import { shareInsightToEngagement } from "../../../coach/sharing";
+import { shareInsightToEngagement } from "../../../professional/sharing";
 
 const SHAREABLE_STATUSES = ["success", "success_fallback"];
 

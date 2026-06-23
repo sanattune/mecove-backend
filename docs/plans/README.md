@@ -3,7 +3,7 @@
 Master status index of every plan. **A plan that is not in this tracker does not exist.**
 Full detail lives in each `plan_<name>.md`; this is the map.
 
-_Last reconciled: 2026-06-23_ (coach-support Phases 0–5 shipped)
+_Last reconciled: 2026-06-23_ (professional-support Phases 0–5 shipped)
 
 **Status:** `DONE` (shipped) · `PARTIAL` (core shipped, tail open) · `PENDING` (not started) ·
 `SUPERSEDED` (killed/absorbed) · `MOVED` (re-homed out of plans/).
@@ -13,8 +13,8 @@ _Last reconciled: 2026-06-23_ (coach-support Phases 0–5 shipped)
 
 | Plan | Status | Urgency | Created | Closed | What's left |
 |---|---|---|---|---|---|
-| [plan_coach-support](plan_coach-support.md) | PARTIAL | NOW | 2026-06-23 | — | Phases 0–5 DONE (data model, pro onboarding, engagement create, client accept+reconcile, insight sharing, **lifecycle**: end-by-either-side + daily expiry sweep). Phases 6–8 pending (notifications → account-delete → verification). |
-| [plan_otp-whatsapp](plan_otp-whatsapp.md) | PENDING | LATER | 2026-06-23 | — | Replace AWS SNS SMS OTP with WhatsApp-only (Authentication template). Parked until coach-support done. Needs Meta-approved template; shared `sendWhatsAppTemplate()` also unblocks coach Phase 6. |
+| [plan_professional-support](plan_professional-support.md) | PARTIAL | NOW | 2026-06-23 | — | Phases 0–5 DONE (data model, pro onboarding, engagement create, client accept+reconcile, insight sharing, **lifecycle**: end-by-either-side + daily expiry sweep). Phases 6–8 pending (notifications → account-delete → verification). |
+| [plan_otp-whatsapp](plan_otp-whatsapp.md) | PENDING | LATER | 2026-06-23 | — | Replace AWS SNS SMS OTP with WhatsApp-only (Authentication template). Parked until professional-support done. Needs Meta-approved template; shared `sendWhatsAppTemplate()` also unblocks coach Phase 6. |
 | [plan_insight-rename](plan_insight-rename.md) | PARTIAL | LATER | 2026-06-23 | — | Backend + Android code DONE & pushed; build green. Tail: rebuild + ship APK to testers; runtime-test Android against new `/insights/*` API. |
 
 ## Done

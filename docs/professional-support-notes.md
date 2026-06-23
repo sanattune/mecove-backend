@@ -1,6 +1,6 @@
-# Coach / Professional Support — Design Notes (scratch)
+# Professional Support — Design Notes (scratch)
 
-> Working notes for the `coach-support` branch. NOT canonical. Merge settled
+> Working notes for the `professional-support` branch. NOT canonical. Merge settled
 > terms into CONTEXT.md and decisions into docs/adr/ once the design stabilises.
 
 ## Status: grilling in progress
@@ -164,10 +164,10 @@ with a doc id (today they're `pdfBytes` in DB).
   share/access state (D12 unshare = set `revokedAt`).
 - Pro read access = JOIN: active Engagement + non-revoked InsightShare.
 - SCOPE FLAG: the Summary→Insight rename + S3 migration is a refactor **adjacent**
-  to the coach-support spine. Lock name + shape now; do the rename and S3 move as
-  separate work. Coach-support v1 can ship pointing InsightShare at the existing
+  to the professional-support spine. Lock name + shape now; do the rename and S3 move as
+  separate work. Professional-support v1 can ship pointing InsightShare at the existing
   Summary row id if the rename lands later.
-- CONFIRMED 2026-06-23 — **S3 is OUT of coach-support scope.** No dedicated
+- CONFIRMED 2026-06-23 — **S3 is OUT of professional-support scope.** No dedicated
   S3-backed table, no `s3Key`/`docId` column, no upload code in this work. Today
   Insights = `Summary` with `pdfBytes` (bytea) in Postgres + plaintext
   `summaryText`. Sharing reads that same DB-stored PDF — it does NOT depend on S3.

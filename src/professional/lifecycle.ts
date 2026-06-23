@@ -3,7 +3,7 @@ import { prisma } from "../infra/prisma";
 import { logger } from "../infra/logger";
 import { JOB_NAME_SCAN_ENGAGEMENT_EXPIRY, type ScanRemindersPayload } from "../queues/reminderQueue";
 
-// Coach-support engagement lifecycle: time-bound expiry (D9). Explicit end-by-either-
+// Professional-support engagement lifecycle: time-bound expiry (D9). Explicit end-by-either-
 // side lives in the REST handlers; access is cut by derivation in both cases (D11/D23),
 // so neither end path needs to touch InsightShare rows.
 

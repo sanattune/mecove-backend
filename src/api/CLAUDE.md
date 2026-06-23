@@ -91,9 +91,9 @@ Request IDs: Fastify generates UUIDs via `genReqId`. Every response gets `X-Requ
 
 **Privacy gate:** `privacyAccepted` is a version check (`user.privacyAcceptedVersion === consentConfig.mvp.version`), not just non-null. Bumping `mvp.version` in `consent.config.yaml` forces re-acceptance for all users.
 
-### Professional endpoints (coach-support)
+### Professional endpoints (professional-support)
 
-Handlers in `handlers/professionalHandler.ts`. See `docs/plans/plan_coach-support.md`.
+Handlers in `handlers/professionalHandler.ts`. See `docs/plans/plan_professional-support.md`.
 
 | Method | Path | Description |
 |---|---|---|
@@ -115,13 +115,13 @@ Same `engagementHandler.ts`; `authenticate` only (these are the client's own).
 | POST | `/engagements/:engagementId/end` | Client ends (D11), from pending (decline) or active → `ended`/`endedBy=client`. 409 if already ended. Professional's access cut by derivation. |
 | POST | `/professional/engagements/:engagementId/end` | Professional ends → `ended`/`endedBy=professional`. (Pro-side route; `requireProfessional`.) |
 
-**Expiry:** a daily reminder-queue job (`JOB_NAME_SCAN_ENGAGEMENT_EXPIRY`, 00:30 UTC) runs `src/coach/lifecycle.ts#expireDueEngagements` — active engagements past `endDate` → `ended`/`endedBy=expiry`. Registered via `startEngagementExpiryScheduler`, dispatched in the `reminderWorker`.
+**Expiry:** a daily reminder-queue job (`JOB_NAME_SCAN_ENGAGEMENT_EXPIRY`, 00:30 UTC) runs `src/professional/lifecycle.ts#expireDueEngagements` — active engagements past `endDate` → `ended`/`endedBy=expiry`. Registered via `startEngagementExpiryScheduler`, dispatched in the `reminderWorker`.
 
 **Invite reconciliation:** `/auth/verify` calls `reconcileEngagementInvites(userId, phone)` after resolving the user — links any pending invite where `inviteePhone == phone` (sets `clientUserId`, nulls `inviteePhone`). Idempotent; matches only unlinked pending rows (D26).
 
-### Insight sharing (coach-support, `shareHandler.ts`)
+### Insight sharing (professional-support, `shareHandler.ts`)
 
-Client-controlled disclosure. Mutations route through `src/coach/sharing.ts` (shared with the worker's auto-send).
+Client-controlled disclosure. Mutations route through `src/professional/sharing.ts` (shared with the worker's auto-send).
 
 | Method | Path | Description |
 |---|---|---|

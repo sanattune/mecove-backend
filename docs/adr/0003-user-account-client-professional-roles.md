@@ -31,7 +31,7 @@ are **non-exclusive roles** layered on a User:
 
 The Professional↔Client relationship is a first-class **`Engagement`**
 (Pro-initiated, client-accept-gated, time-bounded). Disclosure flows one way as
-client-controlled **`InsightShare`** grants. See `docs/coach-support-notes.md` for
+client-controlled **`InsightShare`** grants. See `docs/professional-support-notes.md` for
 the full decision log (D1–D28).
 
 ## Consequences

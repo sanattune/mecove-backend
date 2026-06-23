@@ -1,10 +1,10 @@
-# Coach-Support — Implementation Plan (phased)
+# Professional-Support — Implementation Plan (phased)
 
-**Status:** PENDING · **Urgency:** NOW · **Created:** 2026-06-23 · **Branch:** `coach-support`
+**Status:** PENDING · **Urgency:** NOW · **Created:** 2026-06-23 · **Branch:** `professional-support`
 > Tracked in [docs/plans/README.md]. Design settled (D1–D28); no code yet. Going
 > phase-by-phase, starting Phase 0.
 
-> Design is settled in `docs/coach-support-notes.md` (D1–D28), `docs/adr/0003`,
+> Design is settled in `docs/professional-support-notes.md` (D1–D28), `docs/adr/0003`,
 > and the CONTEXT.md "Professional support" section. This is the BUILD plan: phases
 > sequenced by dependency, each shippable on its own. We go one phase at a time.
 > Backend only — the Pro **web portal** is a separate frontend; here we expose the
@@ -89,7 +89,7 @@ Client: `POST /engagements/:id/shares` (any type, active+owned+ready guards, re-
 reactivates), `DELETE /engagements/:id/shares/:insightId` (unshare=revokedAt, D12),
 `PUT /engagements/:id/auto-send` (toggle, future-only). Pro: `GET
 /professional/engagements/:id/insights` + `/:insightId/pdf` — access DERIVED (active
-engagement + non-revoked share, D23). Shared service `src/coach/sharing.ts`
+engagement + non-revoked share, D23). Shared service `src/professional/sharing.ts`
 (`shareInsightToEngagement`, `autoShareSessionBridgeInsight`); worker hook auto-shares
 completed SessionBridge to opted-in active engagements (D28, non-fatal). Verified via
 inject (19/19) incl. access-cut-on-end + worker auto-share.
@@ -112,7 +112,7 @@ unshare and engagement-end both cut access with no extra writes.
 `POST /engagements/:id/end` (client, from pending=decline or active) + `POST
 /professional/engagements/:id/end` (pro) → status=ended, endedAt, endedBy; 409 if
 already ended; access cut by derivation (no share writes). Daily expiry sweep
-`src/coach/lifecycle.ts#expireDueEngagements` (active + endDate≤now → ended/expiry),
+`src/professional/lifecycle.ts#expireDueEngagements` (active + endDate≤now → ended/expiry),
 registered on the shared reminderQueue (`JOB_NAME_SCAN_ENGAGEMENT_EXPIRY`, 00:30 UTC)
 and dispatched in `reminderWorker`. Renewal = a fresh engagement (D10, already
 possible via Phase 2 once ended). Verified via inject (8/8) incl. sweep selectivity.

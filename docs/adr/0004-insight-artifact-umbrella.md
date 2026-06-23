@@ -6,7 +6,7 @@ The backend generates per-user reports — currently **SessionBridge** (counsell
 facing) and **Myself, Lately** (self-reflection). In code these live in a single
 `Summary` model with a `reportType` discriminator. The word "report" / "summary"
 was used inconsistently as the generic name for "a thing the pipeline produced,"
-and the coach-support work (sharing artifacts to professionals) needed a precise,
+and the professional-support work (sharing artifacts to professionals) needed a precise,
 shareable noun. ADR-0001 already moved section/field names to product language;
 this continues that line at the model level.
 
@@ -31,7 +31,7 @@ recreated rather than `ALTER ... RENAME`d.
 - The Android app and OpenAPI spec change in lockstep; acceptable because the app
   is pre-production (no published installs), so no deprecated-alias/back-compat
   layer is built.
-- New coach-support code (Engagement, InsightShare) is written against `Insight`
+- New professional-support code (Engagement, InsightShare) is written against `Insight`
   from the start — the rename is sequenced first to avoid reworking new code.
 - S3-backed storage is explicitly out of scope here; Insight keeps `pdfBytes` in
   Postgres for now (separate track).

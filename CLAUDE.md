@@ -82,8 +82,8 @@ No test framework is currently configured.
 - `src/queues/` — four BullMQ queues: insightQueue, replyQueue, replyBatchQueue, reminderQueue
 - `src/consent/` — YAML-configured consent gating flow
 - `src/replyBatch/` — Redis-based message batching with atomic lock for flush
-- `src/engagement/` — proactive messaging: checkin/ (reminders), nudge/ (inactivity), shared scheduler.ts. NOTE: this is the inactivity/reminder subsystem — NOT the coach-support `Engagement` model (that's the Professional↔Client link).
-- `src/coach/` — coach-support domain services (e.g. `sharing.ts` — InsightShare grant logic shared by REST handlers and the worker's auto-send). See `docs/plans/plan_coach-support.md`.
+- `src/engagement/` — proactive messaging: checkin/ (reminders), nudge/ (inactivity), shared scheduler.ts. NOTE: this is the inactivity/reminder subsystem — NOT the professional-support `Engagement` model (that's the Professional↔Client link).
+- `src/professional/` — professional-support domain services (e.g. `sharing.ts` — InsightShare grant logic shared by REST handlers and the worker's auto-send). See `docs/plans/plan_professional-support.md`.
 
 ## Database
 
@@ -91,7 +91,7 @@ Prisma schema at `prisma/schema.prisma`. Config in `prisma.config.ts` (resolves 
 
 **Models:** User → Identity (channel binding) → Message. Insight links to User. UserSettings (1-to-1 with User, created eagerly) holds per-user preferences: `timezone`, `lastNudgedAt`. UserReminder holds scheduled check-ins per user. RefreshToken stores hashed mobile app refresh tokens with revocation support.
 
-**Coach/Professional support** (coach-support plan, Phase 0+): `ProfessionalProfile` (1:N User; a User's Pro role, `User.isProfessional` is a denormalized flag), `Engagement` (Professional↔Client link, `pending|active|ended`, partial-unique one-active-per-pair), `InsightShare` (client grant of one Insight to one Engagement; access derives from `Engagement.status='active' AND revokedAt IS NULL`). See `docs/plans/plan_coach-support.md` + `docs/adr/0003`.
+**Professional support** (professional-support plan, Phase 0+): `ProfessionalProfile` (1:N User; a User's Pro role, `User.isProfessional` is a denormalized flag), `Engagement` (Professional↔Client link, `pending|active|ended`, partial-unique one-active-per-pair), `InsightShare` (client grant of one Insight to one Engagement; access derives from `Engagement.status='active' AND revokedAt IS NULL`). See `docs/plans/plan_professional-support.md` + `docs/adr/0003`.
 
 **Identity channels:** `"whatsapp"` (WhatsApp users, gated by allowlist) and `"app"` (mobile app users, open sign-up). A user can have both. Message history queries use `userId` to span all channels.
 

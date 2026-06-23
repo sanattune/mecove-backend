@@ -1,6 +1,6 @@
 import { prisma } from "../infra/prisma";
 
-// Coach-support Insight sharing service. Shared by the REST handlers (client-driven
+// Professional-support Insight sharing service. Shared by the REST handlers (client-driven
 // share) and the worker (auto-send on SessionBridge completion) so the upsert rule
 // lives in one place. Access is DERIVED at read time (active engagement + non-revoked
 // share, D23) — these functions only manage the grant rows.
