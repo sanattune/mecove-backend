@@ -14,7 +14,12 @@ Legend: each phase lists Deliverables, the D-decisions it implements, and Accept
 
 ---
 
-## Phase 0 — Data model + migration (foundation)
+## Phase 0 — Data model + migration (foundation) ✅ DONE 2026-06-23
+Migration `20260623130000_add_coach_support` applied. Added models
+`ProfessionalProfile`, `Engagement`, `InsightShare` + `User.isProfessional` +
+back-relations + indexes; partial-unique `Engagement_active_professional_client_key`
+(WHERE status='active') added as raw SQL. `tsc` green; `migrate diff` reports no
+drift (Prisma doesn't track the partial index, so no drift gotcha). No behavior yet.
 **Deliverables**
 - Prisma models: `ProfessionalProfile` (1:N User), `Engagement`, `InsightShare`;
   add `User.isProfessional Boolean @default(false)` + back-relations.

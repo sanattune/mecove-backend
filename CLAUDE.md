@@ -90,6 +90,8 @@ Prisma schema at `prisma/schema.prisma`. Config in `prisma.config.ts` (resolves 
 
 **Models:** User → Identity (channel binding) → Message. Insight links to User. UserSettings (1-to-1 with User, created eagerly) holds per-user preferences: `timezone`, `lastNudgedAt`. UserReminder holds scheduled check-ins per user. RefreshToken stores hashed mobile app refresh tokens with revocation support.
 
+**Coach/Professional support** (coach-support plan, Phase 0+): `ProfessionalProfile` (1:N User; a User's Pro role, `User.isProfessional` is a denormalized flag), `Engagement` (Professional↔Client link, `pending|active|ended`, partial-unique one-active-per-pair), `InsightShare` (client grant of one Insight to one Engagement; access derives from `Engagement.status='active' AND revokedAt IS NULL`). See `docs/plans/plan_coach-support.md` + `docs/adr/0003`.
+
 **Identity channels:** `"whatsapp"` (WhatsApp users, gated by allowlist) and `"app"` (mobile app users, open sign-up). A user can have both. Message history queries use `userId` to span all channels.
 
 **Key Message fields:**

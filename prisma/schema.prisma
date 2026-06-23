@@ -24,13 +24,16 @@ model User {
   mvpAcceptedAt          DateTime?
   mvpAcceptedVersion     String?
   encryptedDek           String?   @db.Text
+  isProfessional         Boolean   @default(false)
 
-  identities     Identity[]
-  messages       Message[]
-  insights       Insight[]
-  reminders      UserReminder[]
-  settings       UserSettings?
-  refreshTokens  RefreshToken[]
+  identities           Identity[]
+  messages             Message[]
+  insights             Insight[]
+  reminders            UserReminder[]
+  settings             UserSettings?
+  refreshTokens        RefreshToken[]
+  professionalProfiles ProfessionalProfile[]
+  engagementsAsClient  Engagement[]
 }
 
 model Identity {
@@ -88,9 +91,76 @@ model Insight {
   error              String?  @db.Text
   insightType        String   @default("sessionbridge")
 
-  user User @relation(fields: [userId], references: [id])
+  user   User           @relation(fields: [userId], references: [id])
+  shares InsightShare[]
 
   @@index([userId, rangeStart, rangeEnd])
+}
+
+// ── Coach / Professional support (coach-support plan, Phase 0) ──────────────────
+
+// A practice-side profile for a Professional (therapist | counsellor | coach).
+// 1:N with User — one person may run several distinct profiles (D3, D13).
+model ProfessionalProfile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @db.Uuid
+  professionalType   String   // therapist | counsellor | coach
+  additionalTitle    String?  // free text, e.g. "career coach"
+  displayName        String
+  verificationStatus String   @default("pending") // async trust badge (D15)
+  createdAt          DateTime @default(now())
+
+  user        User         @relation(fields: [userId], references: [id])
+  engagements Engagement[]
+
+  @@index([userId])
+}
+
+// The first-class Professional<->Client relationship (D4). Pro-initiated, client
+// must accept, time-bounded. clientUserId is null while a phone invite is pending
+// (D17); reconciled on signup (D26).
+model Engagement {
+  id                    String    @id @default(uuid()) @db.Uuid
+  professionalId        String    @db.Uuid
+  clientUserId          String?   @db.Uuid
+  inviteePhone          String?   // E.164; set when inviting a non-user (D17)
+  status                String    @default("pending") // pending | active | ended (D5/D11)
+  startDate             DateTime?
+  endDate               DateTime? // term end (D9/D10)
+  autoSendSessionBridge Boolean   @default(false) // per-engagement toggle (D6/D28)
+  acceptedAt            DateTime?
+  endedAt               DateTime?
+  endedBy               String?   // client | professional (D11)
+  createdAt             DateTime  @default(now())
+
+  professional ProfessionalProfile @relation(fields: [professionalId], references: [id])
+  clientUser   User?               @relation(fields: [clientUserId], references: [id])
+  shares       InsightShare[]
+
+  @@index([professionalId])
+  @@index([clientUserId])
+  @@index([inviteePhone])
+  @@index([status])
+  // Partial-unique "one active engagement per (professional, client)" (D24) is added
+  // in the migration as a WHERE-filtered index — Prisma can't express it here.
+}
+
+// A client-controlled grant exposing ONE Insight to ONE Engagement (D6, D19). Access
+// derives from Engagement.status='active' AND revokedAt IS NULL (D23); unshare = set
+// revokedAt (D12).
+model InsightShare {
+  id           String    @id @default(uuid()) @db.Uuid
+  engagementId String    @db.Uuid
+  insightId    String    @db.Uuid
+  sharedAt     DateTime  @default(now())
+  revokedAt    DateTime?
+  autoSent     Boolean   @default(false)
+
+  engagement Engagement @relation(fields: [engagementId], references: [id])
+  insight    Insight    @relation(fields: [insightId], references: [id])
+
+  @@unique([engagementId, insightId])
+  @@index([insightId])
 }
 
 model UserReminder {
