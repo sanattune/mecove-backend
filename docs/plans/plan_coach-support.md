@@ -113,6 +113,10 @@ unshare and engagement-end both cut access with no extra writes.
 **Implements:** D8, D21, D17b.
 **RISK/DEP:** app **push (FCM)** infra may not exist yet — WhatsApp client does.
 Confirm/stand up push before this phase, or stage WhatsApp-first then add push.
+**SHARED DEP:** WhatsApp outbound to COLD numbers (invitees who never messaged us)
+needs **template messages** — the same `sendWhatsAppTemplate()` built by
+`plan_otp-whatsapp.md`. The pro-invite onboarding nudge (D17b) is a template send.
+Sequence OTP-WhatsApp plan before this phase, or build `sendWhatsAppTemplate()` here.
 **Acceptance:** each event reaches the right recipient on the right channel.
 
 ## Phase 7 — Account-delete behavior change

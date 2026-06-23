@@ -14,6 +14,7 @@ _Last reconciled: 2026-06-23_ (coach-support Phases 0–2 shipped)
 | Plan | Status | Urgency | Created | Closed | What's left |
 |---|---|---|---|---|---|
 | [plan_coach-support](plan_coach-support.md) | PARTIAL | NOW | 2026-06-23 | — | Phases 0 (data model), 1 (pro onboarding), 2 (engagement create: `/professional/engagements` + `requireProfessional`) DONE. Phases 3–8 pending (client accept+reconcile → sharing → lifecycle → notifications → account-delete → verification). |
+| [plan_otp-whatsapp](plan_otp-whatsapp.md) | PENDING | LATER | 2026-06-23 | — | Replace AWS SNS SMS OTP with WhatsApp-only (Authentication template). Parked until coach-support done. Needs Meta-approved template; shared `sendWhatsAppTemplate()` also unblocks coach Phase 6. |
 | [plan_insight-rename](plan_insight-rename.md) | PARTIAL | LATER | 2026-06-23 | — | Backend + Android code DONE & pushed; build green. Tail: rebuild + ship APK to testers; runtime-test Android against new `/insights/*` API. |
 
 ## Done
