@@ -3,7 +3,7 @@
 Master status index of every plan. **A plan that is not in this tracker does not exist.**
 Full detail lives in each `plan_<name>.md`; this is the map.
 
-_Last reconciled: 2026-06-23_ (professional-support Phases 0–5 + 7 shipped; 6 deferred)
+_Last reconciled: 2026-06-23_ (professional-support Phases 0–5, 7, 8 shipped; only 6 deferred)
 
 **Status:** `DONE` (shipped) · `PARTIAL` (core shipped, tail open) · `PENDING` (not started) ·
 `SUPERSEDED` (killed/absorbed) · `MOVED` (re-homed out of plans/).
@@ -13,7 +13,7 @@ _Last reconciled: 2026-06-23_ (professional-support Phases 0–5 + 7 shipped; 6 
 
 | Plan | Status | Urgency | Created | Closed | What's left |
 |---|---|---|---|---|---|
-| [plan_professional-support](plan_professional-support.md) | PARTIAL | NOW | 2026-06-23 | — | Phases 0–5 + 7 DONE (data model, pro onboarding, engagement create, client accept+reconcile, insight sharing, lifecycle, **account-delete→messages-only**). Phase 6 (notifications) DEFERRED — waiting on WhatsApp template work ([[plan_otp-whatsapp]]). Phase 8 (verification badge) pending. |
+| [plan_professional-support](plan_professional-support.md) | PARTIAL | NOW | 2026-06-23 | — | Phases 0–5, 7, 8 DONE (data model, pro onboarding, engagement create, client accept+reconcile, insight sharing, lifecycle, account-delete→messages-only, **verification admin**). **Only Phase 6 (notifications) remains** — DEFERRED, waiting on WhatsApp template work (plan_otp-whatsapp). The feature is functionally complete minus notifications. |
 | [plan_otp-whatsapp](plan_otp-whatsapp.md) | PENDING | LATER | 2026-06-23 | — | Replace AWS SNS SMS OTP with WhatsApp-only (Authentication template). Parked until professional-support done. Needs Meta-approved template; shared `sendWhatsAppTemplate()` also unblocks coach Phase 6. |
 | [plan_insight-rename](plan_insight-rename.md) | PARTIAL | LATER | 2026-06-23 | — | Backend + Android code DONE & pushed; build green. Tail: rebuild + ship APK to testers; runtime-test Android against new `/insights/*` API. |
 

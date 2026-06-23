@@ -47,6 +47,21 @@ export async function requireProfessional(request: FastifyRequest, reply: Fastif
   }
 }
 
+// Role gate for /admin/* routes. Run AFTER `authenticate`. Admin = User.role==="admin"
+// (set via the WhatsApp admin allowlist in src/access/config.ts).
+export async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const userId = request.userId;
+  if (!userId) {
+    reply.code(401).send(Errors.unauthorized());
+    return;
+  }
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (user?.role !== "admin") {
+    reply.code(403).send(Errors.forbidden("Admin access required."));
+    return;
+  }
+}
+
 // Legacy: used by WhatsApp webhook handler (in production)
 export function requireAuth(
   req: http.IncomingMessage,

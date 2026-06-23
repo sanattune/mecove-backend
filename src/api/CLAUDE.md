@@ -133,6 +133,15 @@ Client-controlled disclosure. Mutations route through `src/professional/sharing.
 
 **Auto-send (D28):** the worker calls `autoShareSessionBridgeInsight(insightId, userId)` after a SessionBridge insight reaches `success`, sharing it (autoSent=true) to every active engagement with the toggle on. Non-fatal — a sharing failure never fails the generation job.
 
+### Admin endpoints (`adminHandler.ts`)
+
+Team-only. `onRequest: [authenticate, requireAdmin]` (`requireAdmin` 403s callers whose `User.role !== "admin"`).
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/admin/professional-profiles` | Review queue. Optional `?status=pending\|verified\|rejected`. Returns profiles + owner `{phone, displayName}`. |
+| PATCH | `/admin/professional-profiles/:profileId/verification` | Set `verificationStatus` (async trust badge, D15 — non-blocking; client-accept is the real gate). Already surfaced on every profile read. |
+
 **Encryption:** Messages encrypted/decrypted with user's DEK via `getOrCreateUserDek()`. History endpoint decrypts before returning. `decryptText()` is safe on non-encrypted strings.
 
 ### Middleware

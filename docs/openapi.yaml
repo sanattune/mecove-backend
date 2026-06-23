@@ -1942,6 +1942,171 @@ paths:
                     type: string
                   message:
                     type: string
+  /admin/professional-profiles:
+    get:
+      summary: List professional profiles for verification review
+      tags:
+        - Admin
+      description: Team-only. Optional ?status=pending|verified|rejected filter.
+        Includes the owner's phone + name.
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - pending
+              - verified
+              - rejected
+          in: query
+          name: status
+          required: false
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /admin/professional-profiles/{profileId}/verification:
+    patch:
+      summary: Set a professional profile's verification status
+      tags:
+        - Admin
+      description: Team-only async trust badge (D15) — non-blocking; client-accept is
+        the real gate. Sets verificationStatus to pending|verified|rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - verificationStatus
+              properties:
+                verificationStatus:
+                  type: string
+                  enum:
+                    - pending
+                    - verified
+                    - rejected
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: profileId
+          required: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  professionalType:
+                    type: string
+                    enum:
+                      - therapist
+                      - counsellor
+                      - coach
+                  displayName:
+                    type: string
+                  additionalTitle:
+                    type: string
+                    nullable: true
+                  verificationStatus:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+        "400":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "403":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        "404":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
   /webhooks/whatsapp:
     get:
       responses:
@@ -1979,3 +2144,5 @@ tags:
     description: Professional profiles (coach/therapist/counsellor onboarding)
   - name: Engagement
     description: "Client-side engagement: list and accept"
+  - name: Admin
+    description: "Team-only: professional verification review"

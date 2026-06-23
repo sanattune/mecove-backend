@@ -155,7 +155,12 @@ survives).
 **Implements:** D25.
 **Acceptance:** delete wipes messages only; shares stay valid; stats.lastInsight works.
 
-## Phase 8 — Verification admin (async trust badge)
+## Phase 8 — Verification admin (async trust badge) ✅ DONE 2026-06-23
+`adminHandler.ts` + `requireAdmin` gate (role==="admin"): `GET
+/admin/professional-profiles?status=` (review queue, owner phone/name) + `PATCH
+/admin/professional-profiles/:id/verification` (set pending|verified|rejected).
+Non-blocking (client-accept is the real gate, D15); status already surfaced on every
+profile read. New `Admin` tag. Verified via inject (6/6).
 **Deliverables**
 - Minimal admin path to set `verificationStatus` (manual/SQL or a tiny admin
   endpoint). Surfaces as a badge; non-blocking (client-accept is the real gate, D15).

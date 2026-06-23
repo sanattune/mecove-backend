@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { authenticate, requireProfessional } from "./middleware/auth";
+import { authenticate, requireProfessional, requireAdmin } from "./middleware/auth";
 import { handleRequestOtp, handleVerifyOtp, handleRefreshToken, handleLogout } from "./handlers/authHandler";
 import { handleGetMessages, handleSendMessage } from "./handlers/messageHandler";
 import { handleGenerateInsight, handleGetInsight, handleGetInsightPdf } from "./handlers/insightHandler";
@@ -8,6 +8,7 @@ import { handleGetStats, handleDeleteAccountData, handleGetPrivacy, handleAccept
 import { handleCreateProfessionalProfile, handleListProfessionalProfiles } from "./handlers/professionalHandler";
 import { handleCreateEngagement, handleListProfessionalEngagements, handleListClientEngagements, handleAcceptEngagement, handleEndEngagementByClient, handleEndEngagementByPro } from "./handlers/engagementHandler";
 import { handleShareInsight, handleUnshareInsight, handleSetAutoSend, handleListSharedInsights, handleGetSharedInsightPdf } from "./handlers/shareHandler";
+import { handleListProfilesForReview, handleSetVerificationStatus } from "./handlers/adminHandler";
 
 const S = {
   Error: {
@@ -672,4 +673,34 @@ export async function restPlugin(app: FastifyInstance): Promise<void> {
       response: { 200: { type: "string", format: "binary", description: "PDF file" }, 401: S.Error, 403: S.Error, 404: S.Error },
     },
   }, handleGetSharedInsightPdf);
+
+  // ── Admin ──────────────────────────────────────────────────────────────────────
+
+  app.get<{ Querystring: { status?: string } }>("/admin/professional-profiles", {
+    onRequest: [authenticate, requireAdmin],
+    schema: {
+      tags: ["Admin"],
+      summary: "List professional profiles for verification review",
+      description: "Team-only. Optional ?status=pending|verified|rejected filter. Includes the owner's phone + name.",
+      security: [{ BearerAuth: [] }],
+      querystring: { type: "object", properties: { status: { type: "string", enum: ["pending", "verified", "rejected"] } } },
+      response: {
+        200: { type: "object", properties: { profiles: { type: "array", items: { type: "object", additionalProperties: true } } } },
+        400: S.Error, 401: S.Error, 403: S.Error,
+      },
+    },
+  }, handleListProfilesForReview);
+
+  app.patch<{ Params: { profileId: string } }>("/admin/professional-profiles/:profileId/verification", {
+    onRequest: [authenticate, requireAdmin],
+    schema: {
+      tags: ["Admin"],
+      summary: "Set a professional profile's verification status",
+      description: "Team-only async trust badge (D15) — non-blocking; client-accept is the real gate. Sets verificationStatus to pending|verified|rejected.",
+      security: [{ BearerAuth: [] }],
+      params: { type: "object", required: ["profileId"], properties: { profileId: { type: "string" } } },
+      body: { type: "object", required: ["verificationStatus"], properties: { verificationStatus: { type: "string", enum: ["pending", "verified", "rejected"] } } },
+      response: { 200: S.ProfessionalProfile, 400: S.Error, 401: S.Error, 403: S.Error, 404: S.Error },
+    },
+  }, handleSetVerificationStatus);
 }

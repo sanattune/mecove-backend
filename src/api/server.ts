@@ -85,6 +85,7 @@ export async function buildApp() {
         { name: "Account", description: "User stats, data deletion, privacy" },
         { name: "Professional", description: "Professional profiles (coach/therapist/counsellor onboarding)" },
         { name: "Engagement", description: "Client-side engagement: list and accept" },
+        { name: "Admin", description: "Team-only: professional verification review" },
       ],
     },
   }));
